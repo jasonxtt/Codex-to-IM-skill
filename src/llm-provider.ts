@@ -54,6 +54,12 @@ export class SDKLLMProvider implements LLMProvider {
       start(controller) {
         (async () => {
           try {
+            // Strip CLAUDECODE env var to allow nested Claude Code sessions
+            const cleanEnv: Record<string, string> = {};
+            for (const [k, v] of Object.entries(process.env)) {
+              if (k !== 'CLAUDECODE' && v !== undefined) cleanEnv[k] = v;
+            }
+
             const queryOptions: Record<string, unknown> = {
               cwd: params.workingDirectory,
               model: params.model,
@@ -61,6 +67,7 @@ export class SDKLLMProvider implements LLMProvider {
               abortController: params.abortController,
               permissionMode: (params.permissionMode as 'default' | 'acceptEdits' | 'plan') || undefined,
               includePartialMessages: true,
+              env: cleanEnv,
               canUseTool: async (
                   toolName: string,
                   input: Record<string, unknown>,
