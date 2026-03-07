@@ -1,6 +1,6 @@
 # Claude-to-IM Skill
 
-Bridge Claude Code / Codex to IM platforms — chat with AI coding agents from Telegram, Discord, or Feishu/Lark.
+Bridge Claude Code / Codex to IM platforms — chat with AI coding agents from Telegram, Discord, Feishu/Lark, or QQ.
 
 [中文文档](README_CN.md)
 
@@ -13,7 +13,7 @@ Bridge Claude Code / Codex to IM platforms — chat with AI coding agents from T
 This skill runs a background daemon that connects your IM bots to Claude Code or Codex sessions. Messages from IM are forwarded to the AI coding agent, and responses (including tool use, permission requests, streaming previews) are sent back to your chat.
 
 ```
-You (Telegram/Discord/Feishu)
+You (Telegram/Discord/Feishu/QQ)
   ↕ Bot API
 Background Daemon (Node.js)
   ↕ Claude Agent SDK or Codex SDK (configurable via CTI_RUNTIME)
@@ -22,9 +22,9 @@ Claude Code / Codex → reads/writes your codebase
 
 ## Features
 
-- **Three IM platforms** — Telegram, Discord, Feishu/Lark, enable any combination
+- **Four IM platforms** — Telegram, Discord, Feishu/Lark, QQ — enable any combination
 - **Interactive setup** — guided wizard collects tokens with step-by-step instructions
-- **Permission control** — tool calls require explicit approval via inline buttons in chat
+- **Permission control** — tool calls require explicit approval via inline buttons (Telegram/Discord) or text `/perm` commands (Feishu/QQ)
 - **Streaming preview** — see Claude's response as it types (Telegram & Discord)
 - **Session persistence** — conversations survive daemon restarts
 - **Secret protection** — tokens stored with `chmod 600`, auto-redacted in all logs
@@ -97,7 +97,7 @@ bash ~/code/Claude-to-IM-skill/scripts/install-codex.sh --link
 
 The wizard will guide you through:
 
-1. **Choose channels** — pick Telegram, Discord, Feishu, or any combination
+1. **Choose channels** — pick Telegram, Discord, Feishu, QQ, or any combination
 2. **Enter credentials** — the wizard explains exactly where to get each token, which settings to enable, and what permissions to grant
 3. **Set defaults** — working directory, model, and mode
 4. **Validate** — tokens are verified against platform APIs immediately
@@ -114,7 +114,7 @@ The daemon starts in the background. You can close the terminal — it keeps run
 
 Open your IM app and send a message to your bot. Claude Code will respond.
 
-When Claude needs to use a tool (edit a file, run a command), you'll see a permission prompt with **Allow** / **Deny** buttons right in the chat.
+When Claude needs to use a tool (edit a file, run a command), you'll see a permission prompt with **Allow** / **Deny** buttons right in the chat (Telegram/Discord), or a text `/perm` command prompt (Feishu/QQ).
 
 ## Commands
 
@@ -158,6 +158,16 @@ The `setup` wizard provides inline guidance for every step. Here's a summary:
 5. **Events & Callbacks**: select **"Long Connection"** as event dispatch method → add `im.message.receive_v1` event
 6. **Publish**: go to "Version Management & Release" → create version → submit for review → approve in Admin Console
 7. **Important**: The bot will NOT work until the version is approved and published
+
+### QQ
+
+> QQ currently supports **C2C private chat only**. No group/channel support, no inline permission buttons, no streaming preview. Permissions use text `/perm ...` commands. Image inbound only (no image replies).
+
+1. Go to [QQ Bot OpenClaw](https://q.qq.com/qqbot/openclaw)
+2. Create a QQ Bot or select an existing one → get **App ID** and **App Secret** (only two required fields)
+3. Configure sandbox access and scan QR code with QQ to add the bot
+4. `CTI_QQ_ALLOWED_USERS` takes `user_openid` values (not QQ numbers) — can be left empty initially
+5. Set `CTI_QQ_IMAGE_ENABLED=false` if the underlying provider doesn't support image input
 
 ## Architecture
 
