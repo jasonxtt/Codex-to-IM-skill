@@ -1,11 +1,15 @@
 export interface PermissionResult {
   behavior: 'allow' | 'deny';
   message?: string;
+  updatedPermissions?: unknown[];
+  grantScope?: 'once' | 'session';
 }
 
 export interface PermissionResolution {
   behavior: 'allow' | 'deny';
   message?: string;
+  updatedPermissions?: unknown[];
+  grantScope?: 'once' | 'session';
 }
 
 export class PendingPermissions {
@@ -30,9 +34,17 @@ export class PendingPermissions {
     if (!entry) return false;
     clearTimeout(entry.timer);
     if (resolution.behavior === 'allow') {
-      entry.resolve({ behavior: 'allow' });
+      entry.resolve({
+        behavior: 'allow',
+        ...(resolution.updatedPermissions ? { updatedPermissions: resolution.updatedPermissions } : {}),
+        ...(resolution.grantScope ? { grantScope: resolution.grantScope } : {}),
+      });
     } else {
-      entry.resolve({ behavior: 'deny', message: resolution.message || 'Denied by user' });
+      entry.resolve({
+        behavior: 'deny',
+        message: resolution.message || 'Denied by user',
+        ...(resolution.grantScope ? { grantScope: resolution.grantScope } : {}),
+      });
     }
     this.pending.delete(permissionRequestId);
     return true;

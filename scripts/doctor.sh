@@ -37,10 +37,24 @@ get_config() { grep "^$1=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d= -f2- |
 
 # --- Read runtime setting ---
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+UPSTREAM_DIR="$(cd "$SKILL_DIR/.." && pwd)/Claude-to-IM"
 CTI_RUNTIME=$(get_config CTI_RUNTIME)
 CTI_RUNTIME="${CTI_RUNTIME:-claude}"
 echo "Runtime: $CTI_RUNTIME"
 echo ""
+
+# --- Upstream bridge repo ---
+if [ -d "$UPSTREAM_DIR/.git" ] || [ -f "$UPSTREAM_DIR/package.json" ]; then
+  check "Upstream bridge repo available ($UPSTREAM_DIR)" 0
+else
+  check "Upstream bridge repo available (missing $UPSTREAM_DIR; reinstall skill or clone https://github.com/op7418/Claude-to-IM.git there)" 1
+fi
+
+if [ -f "$UPSTREAM_DIR/dist/lib/bridge/context.js" ]; then
+  check "Upstream bridge build output exists" 0
+else
+  check "Upstream bridge build output exists (run 'cd $UPSTREAM_DIR && npm install')" 1
+fi
 
 # --- Claude CLI available (claude/auto modes) ---
 if [ "$CTI_RUNTIME" = "claude" ] || [ "$CTI_RUNTIME" = "auto" ]; then
@@ -243,12 +257,12 @@ if [ "$CTI_RUNTIME" = "codex" ] || [ "$CTI_RUNTIME" = "auto" ]; then
   fi
 
   # Check Codex auth: any of CTI_CODEX_API_KEY / CODEX_API_KEY / OPENAI_API_KEY,
-  # or `codex auth status` showing logged-in (interactive login).
+  # or `codex login status` showing logged-in (interactive login).
   CODEX_AUTH=1
   if [ -n "${CTI_CODEX_API_KEY:-}" ] || [ -n "${CODEX_API_KEY:-}" ] || [ -n "${OPENAI_API_KEY:-}" ]; then
     CODEX_AUTH=0
   elif command -v codex &>/dev/null; then
-    CODEX_AUTH_OUT=$(codex auth status 2>&1 || true)
+    CODEX_AUTH_OUT=$(codex login status 2>&1 || true)
     if echo "$CODEX_AUTH_OUT" | grep -qiE 'logged.in|authenticated'; then
       CODEX_AUTH=0
     fi
@@ -260,6 +274,18 @@ if [ "$CTI_RUNTIME" = "codex" ] || [ "$CTI_RUNTIME" = "auto" ]; then
       check "Codex auth available (set OPENAI_API_KEY or run 'codex auth login')" 1
     else
       check "Codex auth available (not found — needed only for Codex fallback)" 0
+    fi
+  fi
+
+  CODEX_WORKDIR=$(get_config CTI_DEFAULT_WORKDIR)
+  CODEX_SKIP_GIT_CHECK=$(get_config CTI_CODEX_SKIP_GIT_REPO_CHECK)
+  if [ -n "$CODEX_WORKDIR" ]; then
+    if git -C "$CODEX_WORKDIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      check "Codex workdir is inside a Git repo" 0
+    elif [ "$CODEX_SKIP_GIT_CHECK" = "true" ]; then
+      check "Codex workdir is not a Git repo, but skip check is enabled" 0
+    else
+      check "Codex workdir is trusted or CTI_CODEX_SKIP_GIT_REPO_CHECK=true ($CODEX_WORKDIR is not a Git repo)" 1
     fi
   fi
 fi
@@ -286,7 +312,11 @@ fi
 
 # --- config.env permissions ---
 if [ -f "$CONFIG_FILE" ]; then
-  PERMS=$(stat -f "%Lp" "$CONFIG_FILE" 2>/dev/null || stat -c "%a" "$CONFIG_FILE" 2>/dev/null || echo "unknown")
+  if [ "$(uname -s)" = "Darwin" ]; then
+    PERMS=$(stat -f "%Lp" "$CONFIG_FILE" 2>/dev/null || echo "unknown")
+  else
+    PERMS=$(stat -c "%a" "$CONFIG_FILE" 2>/dev/null || echo "unknown")
+  fi
   if [ "$PERMS" = "600" ]; then
     check "config.env permissions are 600" 0
   else
@@ -424,11 +454,19 @@ fi
 
 # --- Recent errors in log ---
 if [ -f "$LOG_FILE" ]; then
-  ERROR_COUNT=$(tail -50 "$LOG_FILE" | grep -ciE 'ERROR|Fatal' || true)
+  RECENT_LOG=$(awk '
+    /Starting bridge \(run_id:/ {capture=1; lines=""}
+    capture {lines = lines $0 "\n"}
+    END {printf "%s", lines}
+  ' "$LOG_FILE")
+  if [ -z "$RECENT_LOG" ]; then
+    RECENT_LOG=$(tail -50 "$LOG_FILE")
+  fi
+  ERROR_COUNT=$(printf "%s" "$RECENT_LOG" | grep -ciE 'ERROR|Fatal' || true)
   if [ "$ERROR_COUNT" -eq 0 ]; then
-    check "No recent errors in log (last 50 lines)" 0
+    check "No recent errors in log (current run)" 0
   else
-    check "No recent errors in log (found $ERROR_COUNT ERROR/Fatal lines)" 1
+    check "No recent errors in log (current run has $ERROR_COUNT ERROR/Fatal lines)" 1
   fi
 else
   check "Log file exists (not yet created)" 0

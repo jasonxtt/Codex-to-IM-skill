@@ -16,6 +16,7 @@ import path from 'node:path';
 
 import type { LLMProvider, StreamChatParams } from 'claude-to-im/src/lib/bridge/host.js';
 import type { PendingPermissions } from './permission-gateway.js';
+import { CodexAppServerBridge, type CodexThreadOptions } from './codex-app-server.js';
 import { sseEvent } from './sse-utils.js';
 
 /** MIME → file extension for temp image files. */
@@ -72,11 +73,19 @@ function shouldRetryFreshThread(message: string): boolean {
 export class CodexProvider implements LLMProvider {
   private sdk: CodexModule | null = null;
   private codex: CodexInstance | null = null;
+  private appServer: CodexAppServerBridge | null = null;
 
   /** Maps session IDs to Codex thread IDs for resume. */
   private threadIds = new Map<string, string>();
 
   constructor(private pendingPerms: PendingPermissions) {}
+
+  private getAppServerBridge(): CodexAppServerBridge {
+    if (!this.appServer) {
+      this.appServer = new CodexAppServerBridge(this.pendingPerms, this.threadIds);
+    }
+    return this.appServer;
+  }
 
   /**
    * Lazily load the Codex SDK. Throws a clear error if not installed.
@@ -125,15 +134,17 @@ export class CodexProvider implements LLMProvider {
             const inMemoryThreadId = self.threadIds.get(params.sessionId);
             let savedThreadId = inMemoryThreadId || params.sdkSessionId || undefined;
 
-            const approvalPolicy = toApprovalPolicy(params.permissionMode);
             const passModel = shouldPassModelToCodex();
-
-            const threadOptions: Record<string, unknown> = {
+            const threadOptions = buildCodexThreadOptions({
               ...(passModel && params.model ? { model: params.model } : {}),
               ...(params.workingDirectory ? { workingDirectory: params.workingDirectory } : {}),
               ...(shouldSkipGitRepoCheck() ? { skipGitRepoCheck: true } : {}),
-              approvalPolicy,
-            };
+              ...(params.permissionMode ? { permissionMode: toLegacyPermissionMode(params.permissionMode) } : {}),
+              ...(params.sandboxMode ? { sandboxMode: params.sandboxMode } : {}),
+              ...(params.approvalPolicy ? { approvalPolicy: params.approvalPolicy } : {}),
+              ...(params.networkAccessEnabled !== undefined ? { networkAccessEnabled: params.networkAccessEnabled } : {}),
+              ...(params.additionalDirectories ? { additionalDirectories: params.additionalDirectories } : {}),
+            });
 
             // Build input: Codex SDK UserInput supports { type: "text" } and
             // { type: "local_image", path: string }. We write base64 data to
@@ -143,9 +154,13 @@ export class CodexProvider implements LLMProvider {
             ) ?? [];
 
             let input: string | Array<Record<string, string>>;
+            let appServerInput: Array<Record<string, unknown>>;
             if (imageFiles.length > 0) {
               const parts: Array<Record<string, string>> = [
                 { type: 'text', text: params.prompt },
+              ];
+              const appParts: Array<Record<string, unknown>> = [
+                { type: 'text', text: params.prompt, text_elements: [] },
               ];
               for (const file of imageFiles) {
                 const ext = MIME_EXT[file.type] || '.png';
@@ -153,10 +168,26 @@ export class CodexProvider implements LLMProvider {
                 fs.writeFileSync(tmpPath, Buffer.from(file.data, 'base64'));
                 tempFiles.push(tmpPath);
                 parts.push({ type: 'local_image', path: tmpPath });
+                appParts.push({ type: 'localImage', path: tmpPath });
               }
               input = parts;
+              appServerInput = appParts;
             } else {
               input = params.prompt;
+              appServerInput = [
+                { type: 'text', text: params.prompt, text_elements: [] },
+              ];
+            }
+
+            if (shouldUseCodexAppServer(threadOptions)) {
+              await self.getAppServerBridge().streamChat(
+                params,
+                controller,
+                threadOptions,
+                appServerInput,
+              );
+              controller.close();
+              return;
             }
 
             let retryFresh = false;
@@ -358,4 +389,120 @@ export class CodexProvider implements LLMProvider {
       }
     }
   }
+}
+
+// ========== 权限配置解析函数 ==========
+
+export function getCodexSandboxMode(): 'read-only' | 'workspace-write' | 'danger-full-access' | undefined {
+  const val = process.env.CTI_CODEX_SANDBOX_MODE;
+  if (!val) return undefined;
+  const valid = ['read-only', 'workspace-write', 'danger-full-access'];
+  if (!valid.includes(val)) {
+    console.warn(`[claude-to-im] Invalid CTI_CODEX_SANDBOX_MODE="${val}", ignoring. Valid: ${valid.join(', ')}`);
+    return undefined;
+  }
+  return val as any;
+}
+
+export function getCodexApprovalPolicyOverride(): 'untrusted' | 'on-request' | 'on-failure' | 'never' | undefined {
+  const val = process.env.CTI_CODEX_APPROVAL_POLICY;
+  if (!val) return undefined;
+  const valid = ['untrusted', 'on-request', 'on-failure', 'never'];
+  if (!valid.includes(val)) {
+    console.warn(`[claude-to-im] Invalid CTI_CODEX_APPROVAL_POLICY="${val}", ignoring. Valid: ${valid.join(', ')}`);
+    return undefined;
+  }
+  return val as any;
+}
+
+export function getCodexNetworkAccessEnabled(): boolean | undefined {
+  const val = process.env.CTI_CODEX_NETWORK_ACCESS;
+  if (!val) return undefined;
+  if (val !== 'true' && val !== 'false') {
+    console.warn(`[claude-to-im] Invalid CTI_CODEX_NETWORK_ACCESS="${val}", ignoring. Use true/false.`);
+    return undefined;
+  }
+  return val === 'true';
+}
+
+export function getCodexAdditionalDirectories(): string[] | undefined {
+  const val = process.env.CTI_CODEX_ADDITIONAL_DIRECTORIES;
+  if (!val) return undefined;
+  const dirs = val.split(',').map(d => d.trim()).filter(d => d.length > 0);
+  return dirs.filter(d => d.startsWith('/'));
+}
+
+export function buildCodexThreadOptions(params: {
+  model?: string;
+  workingDirectory?: string;
+  skipGitRepoCheck?: boolean;
+  permissionMode?: string;
+  sandboxMode?: 'read-only' | 'workspace-write' | 'danger-full-access';
+  approvalPolicy?: 'untrusted' | 'on-request' | 'on-failure' | 'never';
+  networkAccessEnabled?: boolean;
+  additionalDirectories?: string[];
+}): CodexThreadOptions {
+  const opts: CodexThreadOptions = {};
+
+  // 基础配置
+  if (params.model) opts.model = params.model;
+  if (params.workingDirectory) opts.workingDirectory = params.workingDirectory;
+  if (params.skipGitRepoCheck) opts.skipGitRepoCheck = true;
+
+  // 权限配置
+  if (params.sandboxMode) {
+    opts.sandboxMode = params.sandboxMode;
+  } else {
+    const sandboxMode = getCodexSandboxMode();
+    if (sandboxMode) opts.sandboxMode = sandboxMode;
+  }
+
+  const approvalPolicyOverride = getCodexApprovalPolicyOverride();
+  if (params.approvalPolicy) {
+    opts.approvalPolicy = params.approvalPolicy;
+  } else if (approvalPolicyOverride) {
+    opts.approvalPolicy = approvalPolicyOverride;
+  } else if (params.permissionMode) {
+    const approvalMap: Record<string, NonNullable<CodexThreadOptions['approvalPolicy']>> = {
+      'trusted': 'never',
+      'auto': 'on-failure',
+      'bypass': 'never',
+      'require-approval': 'on-request',
+    };
+    if (approvalMap[params.permissionMode]) {
+      opts.approvalPolicy = approvalMap[params.permissionMode];
+    }
+  }
+
+  if (params.networkAccessEnabled !== undefined) {
+    opts.networkAccessEnabled = params.networkAccessEnabled;
+  } else {
+    const networkAccess = getCodexNetworkAccessEnabled();
+    if (networkAccess !== undefined) opts.networkAccessEnabled = networkAccess;
+  }
+
+  if (params.additionalDirectories && params.additionalDirectories.length > 0) {
+    opts.additionalDirectories = params.additionalDirectories;
+  } else {
+    const additionalDirs = getCodexAdditionalDirectories();
+    if (additionalDirs && additionalDirs.length > 0) opts.additionalDirectories = additionalDirs;
+  }
+
+  return opts;
+}
+
+function toLegacyPermissionMode(permissionMode: string): string {
+  switch (permissionMode) {
+    case 'acceptEdits':
+      return 'auto';
+    case 'default':
+    case 'plan':
+      return 'require-approval';
+    default:
+      return permissionMode;
+  }
+}
+
+function shouldUseCodexAppServer(threadOptions: CodexThreadOptions): boolean {
+  return threadOptions.approvalPolicy === 'on-request' || threadOptions.approvalPolicy === 'untrusted';
 }

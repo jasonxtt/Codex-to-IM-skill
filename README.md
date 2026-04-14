@@ -45,7 +45,7 @@ Choose the section that matches the AI agent product you actually use.
 #### Recommended: `npx skills`
 
 ```bash
-npx skills add op7418/Claude-to-IM-skill
+npx skills add jasonxtt/Codex-to-IM-skill
 ```
 
 After installation, tell Claude Code:
@@ -63,7 +63,7 @@ If you want WeChat specifically, you can also say:
 #### Alternative: clone directly into Claude Code skills
 
 ```bash
-git clone https://github.com/op7418/Claude-to-IM-skill.git ~/.claude/skills/claude-to-im
+git clone https://github.com/jasonxtt/Codex-to-IM-skill.git ~/.claude/skills/claude-to-im
 ```
 
 Claude Code discovers it automatically.
@@ -71,9 +71,9 @@ Claude Code discovers it automatically.
 #### Alternative: symlink for development
 
 ```bash
-git clone https://github.com/op7418/Claude-to-IM-skill.git ~/code/Claude-to-IM-skill
+git clone https://github.com/jasonxtt/Codex-to-IM-skill.git ~/code/Codex-to-IM-skill
 mkdir -p ~/.claude/skills
-ln -s ~/code/Claude-to-IM-skill ~/.claude/skills/claude-to-im
+ln -s ~/code/Codex-to-IM-skill ~/.claude/skills/claude-to-im
 ```
 
 ### Codex
@@ -81,14 +81,14 @@ ln -s ~/code/Claude-to-IM-skill ~/.claude/skills/claude-to-im
 #### Recommended: use the Codex install script
 
 ```bash
-git clone https://github.com/op7418/Claude-to-IM-skill.git ~/code/Claude-to-IM-skill
-bash ~/code/Claude-to-IM-skill/scripts/install-codex.sh
+git clone https://github.com/jasonxtt/Codex-to-IM-skill.git ~/code/Codex-to-IM-skill
+bash ~/code/Codex-to-IM-skill/scripts/install-codex.sh
 ```
 
 For local development with a live checkout:
 
 ```bash
-bash ~/code/Claude-to-IM-skill/scripts/install-codex.sh --link
+bash ~/code/Codex-to-IM-skill/scripts/install-codex.sh --link
 ```
 
 The install script places the skill under `~/.codex/skills/claude-to-im`, installs dependencies, and builds the daemon.
@@ -108,7 +108,7 @@ If you want WeChat specifically, you can also say:
 #### Alternative: clone directly into Codex skills
 
 ```bash
-git clone https://github.com/op7418/Claude-to-IM-skill.git ~/.codex/skills/claude-to-im
+git clone https://github.com/jasonxtt/Codex-to-IM-skill.git ~/.codex/skills/claude-to-im
 cd ~/.codex/skills/claude-to-im
 npm install
 npm run build
@@ -129,7 +129,7 @@ Choose the update flow that matches both your AI agent product and your installa
 If you installed with `npx skills`, re-run:
 
 ```bash
-npx skills add op7418/Claude-to-IM-skill
+npx skills add jasonxtt/Codex-to-IM-skill
 ```
 
 If you installed via `git clone` or symlink:
@@ -154,7 +154,7 @@ If you installed with the Codex install script in copy mode:
 
 ```bash
 rm -rf ~/.codex/skills/claude-to-im
-bash ~/code/Claude-to-IM-skill/scripts/install-codex.sh
+bash ~/code/Codex-to-IM-skill/scripts/install-codex.sh
 ```
 
 If you installed with `--link` or cloned directly into the Codex skills directory:
@@ -232,6 +232,37 @@ All commands are run inside Claude Code or Codex:
 | `/claude-to-im logs 200` | "logs 200" | Show last 200 log lines |
 | `/claude-to-im reconfigure` | "reconfigure" / "修改配置" | Update config interactively |
 | `/claude-to-im doctor` | "doctor" / "诊断" | Diagnose issues |
+
+### Codex Runtime Permissions
+
+When `CTI_RUNTIME=codex`, the following environment variables control sandbox permissions:
+
+| Variable | Values | Default | Risk |
+|----------|--------|---------|------|
+| `CTI_CODEX_SANDBOX_MODE` | `read-only`, `workspace-write`, `danger-full-access` | SDK default | ⚠️ High |
+| `CTI_CODEX_APPROVAL_POLICY` | `untrusted`, `on-request`, `on-failure`, `never` | Derived from `permissionMode` | ⚠️ High |
+| `CTI_CODEX_NETWORK_ACCESS` | `true`, `false` | `false` | Medium |
+| `CTI_CODEX_ADDITIONAL_DIRECTORIES` | Comma-separated absolute paths | (none) | Medium |
+
+#### Safe Default Configuration
+
+```env
+CTI_RUNTIME=codex
+CTI_CODEX_SANDBOX_MODE=workspace-write
+CTI_CODEX_APPROVAL_POLICY=on-request
+CTI_CODEX_NETWORK_ACCESS=false
+```
+
+#### ⚠️ Danger Zone
+
+```env
+# ONLY for fully trusted private environments!
+CTI_CODEX_SANDBOX_MODE=danger-full-access
+CTI_CODEX_APPROVAL_POLICY=never
+CTI_CODEX_NETWORK_ACCESS=true
+```
+
+Never use the danger zone configuration in public or shared environments.
 
 ## Platform Setup Guides
 

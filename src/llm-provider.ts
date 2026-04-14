@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import { execSync } from 'node:child_process';
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { SDKMessage, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+import type { SDKMessage, PermissionResult, PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
 import type { LLMProvider, StreamChatParams, FileAttachment } from 'claude-to-im/src/lib/bridge/host.js';
 import type { PendingPermissions } from './permission-gateway.js';
 
@@ -500,7 +500,11 @@ export class SDKLLMProvider implements LLMProvider {
                   const result = await pendingPerms.waitFor(opts.toolUseID);
 
                   if (result.behavior === 'allow') {
-                    return { behavior: 'allow' as const, updatedInput: input };
+                    return {
+                      behavior: 'allow' as const,
+                      updatedInput: input,
+                      ...(result.updatedPermissions ? { updatedPermissions: result.updatedPermissions as PermissionUpdate[] } : {}),
+                    };
                   }
                   return {
                     behavior: 'deny' as const,

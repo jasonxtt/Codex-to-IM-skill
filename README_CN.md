@@ -45,7 +45,7 @@ Claude Code / Codex → 读写你的代码库
 #### 推荐：`npx skills`
 
 ```bash
-npx skills add op7418/Claude-to-IM-skill
+npx skills add jasonxtt/Codex-to-IM-skill
 ```
 
 安装完成后，直接对 Claude Code 说：
@@ -63,7 +63,7 @@ npx skills add op7418/Claude-to-IM-skill
 #### 备选：直接克隆到 Claude Code Skills 目录
 
 ```bash
-git clone https://github.com/op7418/Claude-to-IM-skill.git ~/.claude/skills/claude-to-im
+git clone https://github.com/jasonxtt/Codex-to-IM-skill.git ~/.claude/skills/claude-to-im
 ```
 
 Claude Code 会自动发现。
@@ -71,9 +71,9 @@ Claude Code 会自动发现。
 #### 备选：符号链接方式（适合开发）
 
 ```bash
-git clone https://github.com/op7418/Claude-to-IM-skill.git ~/code/Claude-to-IM-skill
+git clone https://github.com/jasonxtt/Codex-to-IM-skill.git ~/code/Codex-to-IM-skill
 mkdir -p ~/.claude/skills
-ln -s ~/code/Claude-to-IM-skill ~/.claude/skills/claude-to-im
+ln -s ~/code/Codex-to-IM-skill ~/.claude/skills/claude-to-im
 ```
 
 ### Codex
@@ -81,14 +81,14 @@ ln -s ~/code/Claude-to-IM-skill ~/.claude/skills/claude-to-im
 #### 推荐：使用 Codex 安装脚本
 
 ```bash
-git clone https://github.com/op7418/Claude-to-IM-skill.git ~/code/Claude-to-IM-skill
-bash ~/code/Claude-to-IM-skill/scripts/install-codex.sh
+git clone https://github.com/jasonxtt/Codex-to-IM-skill.git ~/code/Codex-to-IM-skill
+bash ~/code/Codex-to-IM-skill/scripts/install-codex.sh
 ```
 
 如果你想保留可开发的本地仓库：
 
 ```bash
-bash ~/code/Claude-to-IM-skill/scripts/install-codex.sh --link
+bash ~/code/Codex-to-IM-skill/scripts/install-codex.sh --link
 ```
 
 安装脚本会把 Skill 放到 `~/.codex/skills/claude-to-im`，并自动安装依赖、构建 daemon。
@@ -108,7 +108,7 @@ claude-to-im setup
 #### 备选：直接克隆到 Codex skills 目录
 
 ```bash
-git clone https://github.com/op7418/Claude-to-IM-skill.git ~/.codex/skills/claude-to-im
+git clone https://github.com/jasonxtt/Codex-to-IM-skill.git ~/.codex/skills/claude-to-im
 cd ~/.codex/skills/claude-to-im
 npm install
 npm run build
@@ -129,7 +129,7 @@ npm run build
 如果你是通过 `npx skills` 安装的，直接重新执行：
 
 ```bash
-npx skills add op7418/Claude-to-IM-skill
+npx skills add jasonxtt/Codex-to-IM-skill
 ```
 
 如果你是通过 `git clone` 或符号链接安装的：
@@ -154,7 +154,7 @@ npm run build
 
 ```bash
 rm -rf ~/.codex/skills/claude-to-im
-bash ~/code/Claude-to-IM-skill/scripts/install-codex.sh
+bash ~/code/Codex-to-IM-skill/scripts/install-codex.sh
 ```
 
 如果你是用 `--link` 模式，或者直接克隆到 Codex skills 目录：
@@ -232,6 +232,36 @@ start bridge
 | `/claude-to-im logs 200` | "logs 200" | 查看最近 200 行日志 |
 | `/claude-to-im reconfigure` | "reconfigure" / "修改配置" | 交互式修改配置 |
 | `/claude-to-im doctor` | "doctor" / "诊断" | 诊断问题 |
+
+### Codex 运行时权限配置
+
+当 `CTI_RUNTIME=codex` 时，以下环境变量控制沙箱权限：
+
+| 变量 | 可选值 | 默认值 | 风险 |
+|------|--------|--------|------|
+| `CTI_CODEX_SANDBOX_MODE` | `read-only`, `workspace-write`, `danger-full-access` | SDK 默认 | ⚠️ 高危 |
+| `CTI_CODEX_APPROVAL_POLICY` | `untrusted`, `on-request`, `on-failure`, `never` | 由 permissionMode 推导 | ⚠️ 高危 |
+| `CTI_CODEX_NETWORK_ACCESS` | `true`, `false` | `false` | 中等 |
+| `CTI_CODEX_ADDITIONAL_DIRECTORIES` | 逗号分隔的绝对路径 | (无) | 中等 |
+
+#### 推荐安全配置
+
+```env
+CTI_RUNTIME=codex
+CTI_CODEX_SANDBOX_MODE=workspace-write
+CTI_CODEX_APPROVAL_POLICY=on-request
+CTI_CODEX_NETWORK_ACCESS=false
+```
+
+#### ⚠️ 危险区域
+
+以下配置**仅限完全可信的私有环境使用**：
+
+```env
+CTI_CODEX_SANDBOX_MODE=danger-full-access
+CTI_CODEX_APPROVAL_POLICY=never
+CTI_CODEX_NETWORK_ACCESS=true
+```
 
 ## 平台配置指南
 

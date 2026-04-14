@@ -213,8 +213,11 @@ export class JsonFileStore implements BridgeStore {
       const updated: ChannelBinding = {
         ...existing,
         codepilotSessionId: data.codepilotSessionId,
+        sdkSessionId: data.sdkSessionId ?? '',
         workingDirectory: data.workingDirectory,
         model: data.model,
+        mode: (data.mode as ChannelBinding['mode']) ?? existing.mode ?? 'code',
+        permissionProfile: data.permissionProfile ?? existing.permissionProfile ?? 'ask',
         updatedAt: now(),
       };
       this.bindings.set(key, updated);
@@ -230,6 +233,7 @@ export class JsonFileStore implements BridgeStore {
       workingDirectory: data.workingDirectory,
       model: data.model,
       mode: (this.settings.get('bridge_default_mode') as 'code' | 'plan' | 'ask') || 'code',
+      permissionProfile: data.permissionProfile || 'ask',
       active: true,
       createdAt: now(),
       updatedAt: now(),
@@ -261,6 +265,18 @@ export class JsonFileStore implements BridgeStore {
     return this.sessions.get(id) ?? null;
   }
 
+  listSessions(limit?: number): BridgeSession[] {
+    const sessions = Array.from(this.sessions.values()).sort((a, b) => {
+      const aTime = a.createdAt ? Date.parse(a.createdAt) : 0;
+      const bTime = b.createdAt ? Date.parse(b.createdAt) : 0;
+      return bTime - aTime;
+    });
+    if (limit && limit > 0) {
+      return sessions.slice(0, limit);
+    }
+    return sessions;
+  }
+
   createSession(
     _name: string,
     model: string,
@@ -273,6 +289,7 @@ export class JsonFileStore implements BridgeStore {
       working_directory: cwd || this.settings.get('bridge_default_work_dir') || process.cwd(),
       model,
       system_prompt: systemPrompt,
+      createdAt: now(),
     };
     this.sessions.set(session.id, session);
     this.persistSessions();
@@ -342,8 +359,7 @@ export class JsonFileStore implements BridgeStore {
   updateSdkSessionId(sessionId: string, sdkSessionId: string): void {
     const s = this.sessions.get(sessionId);
     if (s) {
-      // Store sdkSessionId on the session object
-      (s as unknown as Record<string, unknown>)['sdk_session_id'] = sdkSessionId;
+      s.sdk_session_id = sdkSessionId;
       this.persistSessions();
     }
     // Also update any bindings that reference this session

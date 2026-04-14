@@ -37,9 +37,21 @@ describe('JsonFileStore', () => {
     assert.equal(session.model, 'model-1');
     assert.equal(session.working_directory, '/tmp');
     assert.equal(session.system_prompt, 'system prompt');
+    assert.ok(session.createdAt);
 
     const fetched = store.getSession(session.id);
     assert.deepEqual(fetched, session);
+  });
+
+  it('listSessions returns most recent sessions first', async () => {
+    const store = new JsonFileStore(makeSettings());
+    const first = store.createSession('first', 'model-1', undefined, '/tmp/1');
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const second = store.createSession('second', 'model-2', undefined, '/tmp/2');
+
+    const sessions = store.listSessions(2);
+    assert.equal(sessions[0]?.id, second.id);
+    assert.equal(sessions[1]?.id, first.id);
   });
 
   it('getSession returns null for unknown id', () => {
@@ -70,6 +82,37 @@ describe('JsonFileStore', () => {
     });
     assert.equal(b2.id, b1.id);
     assert.equal(b2.codepilotSessionId, 'sess-2');
+  });
+
+  it('upsertChannelBinding resets sdk session id and updates mode when rebinding', () => {
+    const store = new JsonFileStore(makeSettings());
+    const initial = store.upsertChannelBinding({
+      channelType: 'telegram',
+      chatId: '123',
+      codepilotSessionId: 'sess-1',
+      sdkSessionId: 'sdk-old',
+      workingDirectory: '/tmp',
+      model: 'model-1',
+      mode: 'plan',
+      permissionProfile: 'full',
+    });
+
+    const rebound = store.upsertChannelBinding({
+      channelType: 'telegram',
+      chatId: '123',
+      codepilotSessionId: 'sess-2',
+      sdkSessionId: '',
+      workingDirectory: '/tmp/new',
+      model: 'model-2',
+      mode: 'ask',
+      permissionProfile: 'ask',
+    });
+
+    assert.equal(rebound.id, initial.id);
+    assert.equal(rebound.codepilotSessionId, 'sess-2');
+    assert.equal(rebound.sdkSessionId, '');
+    assert.equal(rebound.mode, 'ask');
+    assert.equal(rebound.permissionProfile, 'ask');
   });
 
   it('upsertChannelBinding uses default mode from settings', () => {

@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 // ── SSE utils tests ─────────────────────────────────────────
@@ -23,6 +23,372 @@ describe('sseEvent', () => {
     const result = sseEvent('text', 'line1\nline2');
     const parsed = JSON.parse(result.slice(6));
     assert.equal(parsed.data, 'line1\nline2');
+  });
+});
+
+// ── Codex thread options env parsing tests ────────────────
+
+const CODEX_OPTION_ENV_KEYS = [
+  'CTI_CODEX_SANDBOX_MODE',
+  'CTI_CODEX_APPROVAL_POLICY',
+  'CTI_CODEX_NETWORK_ACCESS',
+  'CTI_CODEX_ADDITIONAL_DIRECTORIES',
+] as const;
+
+function clearCodexOptionEnv(): void {
+  for (const key of CODEX_OPTION_ENV_KEYS) {
+    delete process.env[key];
+  }
+}
+
+async function getCodexProviderExport(name: string): Promise<(...args: never[]) => unknown> {
+  const mod = await import('../codex-provider.js') as Record<string, unknown>;
+  const fn = mod[name];
+  assert.equal(typeof fn, 'function', `${name} should be exported`);
+  return fn as (...args: never[]) => unknown;
+}
+
+function captureConsoleWarn<T>(fn: () => T): { result: T; warnings: unknown[][] } {
+  const originalWarn = console.warn;
+  const warnings: unknown[][] = [];
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args);
+  };
+
+  try {
+    return { result: fn(), warnings };
+  } finally {
+    console.warn = originalWarn;
+  }
+}
+
+describe('getCodexSandboxMode', () => {
+  beforeEach(() => {
+    delete process.env.CTI_CODEX_SANDBOX_MODE;
+  });
+
+  it('should return undefined when not set', async () => {
+    const getCodexSandboxMode = await getCodexProviderExport('getCodexSandboxMode') as () => string | undefined;
+    assert.equal(getCodexSandboxMode(), undefined);
+  });
+
+  it('should return valid values', async () => {
+    const getCodexSandboxMode = await getCodexProviderExport('getCodexSandboxMode') as () => string | undefined;
+    process.env.CTI_CODEX_SANDBOX_MODE = 'workspace-write';
+    assert.equal(getCodexSandboxMode(), 'workspace-write');
+  });
+
+  it('should return danger-full-access when set', async () => {
+    const getCodexSandboxMode = await getCodexProviderExport('getCodexSandboxMode') as () => string | undefined;
+    process.env.CTI_CODEX_SANDBOX_MODE = 'danger-full-access';
+    assert.equal(getCodexSandboxMode(), 'danger-full-access');
+  });
+
+  it('should warn and return undefined for invalid value', async () => {
+    const getCodexSandboxMode = await getCodexProviderExport('getCodexSandboxMode') as () => string | undefined;
+    process.env.CTI_CODEX_SANDBOX_MODE = 'invalid-value';
+    const { result, warnings } = captureConsoleWarn(() => getCodexSandboxMode());
+    assert.equal(result, undefined);
+    assert.ok(warnings.length > 0, 'Invalid value should trigger warning');
+  });
+});
+
+describe('getCodexApprovalPolicyOverride', () => {
+  beforeEach(() => {
+    delete process.env.CTI_CODEX_APPROVAL_POLICY;
+  });
+
+  it('should return undefined when not set', async () => {
+    const getCodexApprovalPolicyOverride = await getCodexProviderExport('getCodexApprovalPolicyOverride') as () => string | undefined;
+    assert.equal(getCodexApprovalPolicyOverride(), undefined);
+  });
+
+  it('should accept untrusted', async () => {
+    const getCodexApprovalPolicyOverride = await getCodexProviderExport('getCodexApprovalPolicyOverride') as () => string | undefined;
+    process.env.CTI_CODEX_APPROVAL_POLICY = 'untrusted';
+    assert.equal(getCodexApprovalPolicyOverride(), 'untrusted');
+  });
+
+  it('should accept on-request', async () => {
+    const getCodexApprovalPolicyOverride = await getCodexProviderExport('getCodexApprovalPolicyOverride') as () => string | undefined;
+    process.env.CTI_CODEX_APPROVAL_POLICY = 'on-request';
+    assert.equal(getCodexApprovalPolicyOverride(), 'on-request');
+  });
+
+  it('should accept on-failure', async () => {
+    const getCodexApprovalPolicyOverride = await getCodexProviderExport('getCodexApprovalPolicyOverride') as () => string | undefined;
+    process.env.CTI_CODEX_APPROVAL_POLICY = 'on-failure';
+    assert.equal(getCodexApprovalPolicyOverride(), 'on-failure');
+  });
+
+  it('should accept never', async () => {
+    const getCodexApprovalPolicyOverride = await getCodexProviderExport('getCodexApprovalPolicyOverride') as () => string | undefined;
+    process.env.CTI_CODEX_APPROVAL_POLICY = 'never';
+    assert.equal(getCodexApprovalPolicyOverride(), 'never');
+  });
+
+  it('should warn and return undefined for invalid value', async () => {
+    const getCodexApprovalPolicyOverride = await getCodexProviderExport('getCodexApprovalPolicyOverride') as () => string | undefined;
+    process.env.CTI_CODEX_APPROVAL_POLICY = 'invalid-value';
+    const { result, warnings } = captureConsoleWarn(() => getCodexApprovalPolicyOverride());
+    assert.equal(result, undefined);
+    assert.ok(warnings.length > 0, 'Invalid value should trigger warning');
+  });
+});
+
+describe('getCodexNetworkAccessEnabled', () => {
+  beforeEach(() => {
+    delete process.env.CTI_CODEX_NETWORK_ACCESS;
+  });
+
+  it('should return true when set to true', async () => {
+    const getCodexNetworkAccessEnabled = await getCodexProviderExport('getCodexNetworkAccessEnabled') as () => boolean | undefined;
+    process.env.CTI_CODEX_NETWORK_ACCESS = 'true';
+    assert.equal(getCodexNetworkAccessEnabled(), true);
+  });
+
+  it('should return false when set to false', async () => {
+    const getCodexNetworkAccessEnabled = await getCodexProviderExport('getCodexNetworkAccessEnabled') as () => boolean | undefined;
+    process.env.CTI_CODEX_NETWORK_ACCESS = 'false';
+    assert.equal(getCodexNetworkAccessEnabled(), false);
+  });
+
+  it('should return undefined when not set', async () => {
+    const getCodexNetworkAccessEnabled = await getCodexProviderExport('getCodexNetworkAccessEnabled') as () => boolean | undefined;
+    assert.equal(getCodexNetworkAccessEnabled(), undefined);
+  });
+
+  it('should return undefined for invalid value', async () => {
+    const getCodexNetworkAccessEnabled = await getCodexProviderExport('getCodexNetworkAccessEnabled') as () => boolean | undefined;
+    process.env.CTI_CODEX_NETWORK_ACCESS = 'invalid';
+    assert.equal(getCodexNetworkAccessEnabled(), undefined);
+  });
+});
+
+describe('getCodexAdditionalDirectories', () => {
+  beforeEach(() => {
+    delete process.env.CTI_CODEX_ADDITIONAL_DIRECTORIES;
+  });
+
+  it('should return undefined when not set', async () => {
+    const getCodexAdditionalDirectories = await getCodexProviderExport('getCodexAdditionalDirectories') as () => string[] | undefined;
+    assert.equal(getCodexAdditionalDirectories(), undefined);
+  });
+
+  it('should parse comma-separated paths', async () => {
+    const getCodexAdditionalDirectories = await getCodexProviderExport('getCodexAdditionalDirectories') as () => string[] | undefined;
+    process.env.CTI_CODEX_ADDITIONAL_DIRECTORIES = '/home/tom,/cus/mosdns';
+    assert.deepEqual(getCodexAdditionalDirectories(), ['/home/tom', '/cus/mosdns']);
+  });
+
+  it('should filter out non-absolute paths', async () => {
+    const getCodexAdditionalDirectories = await getCodexProviderExport('getCodexAdditionalDirectories') as () => string[] | undefined;
+    process.env.CTI_CODEX_ADDITIONAL_DIRECTORIES = '/home/tom,relative/path';
+    assert.deepEqual(getCodexAdditionalDirectories(), ['/home/tom']);
+  });
+
+  it('should handle empty string', async () => {
+    const getCodexAdditionalDirectories = await getCodexProviderExport('getCodexAdditionalDirectories') as () => string[] | undefined;
+    process.env.CTI_CODEX_ADDITIONAL_DIRECTORIES = '';
+    assert.equal(getCodexAdditionalDirectories(), undefined);
+  });
+});
+
+describe('buildCodexThreadOptions', () => {
+  beforeEach(() => {
+    clearCodexOptionEnv();
+  });
+
+  it('should return empty object when no params and no env', async () => {
+    const buildCodexThreadOptions = await getCodexProviderExport('buildCodexThreadOptions') as (params: Record<string, unknown>) => Record<string, unknown>;
+    assert.deepEqual(buildCodexThreadOptions({}), {});
+  });
+
+  it('should pass through basic params', async () => {
+    const buildCodexThreadOptions = await getCodexProviderExport('buildCodexThreadOptions') as (params: Record<string, unknown>) => Record<string, unknown>;
+    const result = buildCodexThreadOptions({ model: 'gpt-5.3-codex', workingDirectory: '/tmp' });
+    assert.equal(result.model, 'gpt-5.3-codex');
+    assert.equal(result.workingDirectory, '/tmp');
+  });
+
+  it('should apply sandbox mode from env', async () => {
+    const buildCodexThreadOptions = await getCodexProviderExport('buildCodexThreadOptions') as (params: Record<string, unknown>) => Record<string, unknown>;
+    process.env.CTI_CODEX_SANDBOX_MODE = 'workspace-write';
+    const result = buildCodexThreadOptions({});
+    assert.equal(result.sandboxMode, 'workspace-write');
+  });
+
+  it('should apply approval policy override from env', async () => {
+    const buildCodexThreadOptions = await getCodexProviderExport('buildCodexThreadOptions') as (params: Record<string, unknown>) => Record<string, unknown>;
+    process.env.CTI_CODEX_APPROVAL_POLICY = 'on-request';
+    const result = buildCodexThreadOptions({ permissionMode: 'trusted' });
+    assert.equal(result.approvalPolicy, 'on-request');
+  });
+
+  it('should fall back to permissionMode derivation when no override', async () => {
+    const buildCodexThreadOptions = await getCodexProviderExport('buildCodexThreadOptions') as (params: Record<string, unknown>) => Record<string, unknown>;
+    const result = buildCodexThreadOptions({ permissionMode: 'trusted' });
+    assert.equal(result.approvalPolicy, 'never');
+  });
+
+  it('should apply networkAccessEnabled from env', async () => {
+    const buildCodexThreadOptions = await getCodexProviderExport('buildCodexThreadOptions') as (params: Record<string, unknown>) => Record<string, unknown>;
+    process.env.CTI_CODEX_NETWORK_ACCESS = 'true';
+    const result = buildCodexThreadOptions({});
+    assert.equal(result.networkAccessEnabled, true);
+  });
+
+  it('should apply additionalDirectories from env', async () => {
+    const buildCodexThreadOptions = await getCodexProviderExport('buildCodexThreadOptions') as (params: Record<string, unknown>) => Record<string, unknown>;
+    process.env.CTI_CODEX_ADDITIONAL_DIRECTORIES = '/a,/b';
+    const result = buildCodexThreadOptions({});
+    assert.deepEqual(result.additionalDirectories, ['/a', '/b']);
+  });
+
+  it('should NOT include sandboxMode when not set (avoid overriding SDK default)', async () => {
+    const buildCodexThreadOptions = await getCodexProviderExport('buildCodexThreadOptions') as (params: Record<string, unknown>) => Record<string, unknown>;
+    const result = buildCodexThreadOptions({});
+    assert.equal(Object.prototype.hasOwnProperty.call(result, 'sandboxMode'), false);
+  });
+
+  it('should NOT include networkAccessEnabled when not set', async () => {
+    const buildCodexThreadOptions = await getCodexProviderExport('buildCodexThreadOptions') as (params: Record<string, unknown>) => Record<string, unknown>;
+    const result = buildCodexThreadOptions({});
+    assert.equal(Object.prototype.hasOwnProperty.call(result, 'networkAccessEnabled'), false);
+  });
+});
+
+// ── Jest placeholder tests (for Dev A) ─────────────────────
+// import { describe, it, expect, beforeEach } from '@jest/globals';
+
+// 需要导入的函数（等开发A实现后）
+// import { getCodexSandboxMode, getCodexApprovalPolicyOverride,
+//          getCodexNetworkAccessEnabled, getCodexAdditionalDirectories,
+//          buildCodexThreadOptions } from '../codex-provider';
+
+describe('getCodexSandboxMode (Jest placeholder)', () => {
+  beforeEach(() => { delete process.env.CTI_CODEX_SANDBOX_MODE; });
+
+  it('should return undefined when not set', () => {
+    // expect(getCodexSandboxMode()).toBeUndefined();
+  });
+
+  it('should return workspace-write when set', () => {
+    process.env.CTI_CODEX_SANDBOX_MODE = 'workspace-write';
+    // expect(getCodexSandboxMode()).toBe('workspace-write');
+  });
+
+  it('should return danger-full-access when set', () => {
+    process.env.CTI_CODEX_SANDBOX_MODE = 'danger-full-access';
+    // expect(getCodexSandboxMode()).toBe('danger-full-access');
+  });
+
+  it('should warn and return undefined for invalid value', () => {
+    process.env.CTI_CODEX_SANDBOX_MODE = 'invalid';
+    // expect(getCodexSandboxMode()).toBeUndefined();
+  });
+});
+
+describe('getCodexApprovalPolicyOverride (Jest placeholder)', () => {
+  beforeEach(() => { delete process.env.CTI_CODEX_APPROVAL_POLICY; });
+
+  it('should return allowed values when set', () => {
+    process.env.CTI_CODEX_APPROVAL_POLICY = 'untrusted';
+    // expect(getCodexApprovalPolicyOverride()).toBe('untrusted');
+
+    process.env.CTI_CODEX_APPROVAL_POLICY = 'on-request';
+    // expect(getCodexApprovalPolicyOverride()).toBe('on-request');
+
+    process.env.CTI_CODEX_APPROVAL_POLICY = 'on-failure';
+    // expect(getCodexApprovalPolicyOverride()).toBe('on-failure');
+
+    process.env.CTI_CODEX_APPROVAL_POLICY = 'never';
+    // expect(getCodexApprovalPolicyOverride()).toBe('never');
+  });
+
+  it('should return undefined when not set', () => {
+    // expect(getCodexApprovalPolicyOverride()).toBeUndefined();
+  });
+
+  it('should warn for invalid value', () => {
+    process.env.CTI_CODEX_APPROVAL_POLICY = 'invalid';
+    // expect(getCodexApprovalPolicyOverride()).toBeUndefined();
+  });
+});
+
+describe('getCodexNetworkAccessEnabled (Jest placeholder)', () => {
+  beforeEach(() => { delete process.env.CTI_CODEX_NETWORK_ACCESS; });
+
+  it('should return true when set to true', () => {
+    process.env.CTI_CODEX_NETWORK_ACCESS = 'true';
+    // expect(getCodexNetworkAccessEnabled()).toBe(true);
+  });
+
+  it('should return false when set to false', () => {
+    process.env.CTI_CODEX_NETWORK_ACCESS = 'false';
+    // expect(getCodexNetworkAccessEnabled()).toBe(false);
+  });
+
+  it('should return undefined when not set', () => {
+    // expect(getCodexNetworkAccessEnabled()).toBeUndefined();
+  });
+});
+
+describe('getCodexAdditionalDirectories (Jest placeholder)', () => {
+  beforeEach(() => { delete process.env.CTI_CODEX_ADDITIONAL_DIRECTORIES; });
+
+  it('should return undefined when not set', () => {
+    // expect(getCodexAdditionalDirectories()).toBeUndefined();
+  });
+
+  it('should parse comma-separated paths', () => {
+    process.env.CTI_CODEX_ADDITIONAL_DIRECTORIES = '/home/tom,/cus/mosdns';
+    // expect(getCodexAdditionalDirectories()).toEqual(['/home/tom', '/cus/mosdns']);
+  });
+
+  it('should filter out non-absolute paths', () => {
+    process.env.CTI_CODEX_ADDITIONAL_DIRECTORIES = '/home/tom,relative/path';
+    // expect(getCodexAdditionalDirectories()).toEqual(['/home/tom']);
+  });
+
+  it('should handle empty string', () => {
+    process.env.CTI_CODEX_ADDITIONAL_DIRECTORIES = '';
+    // expect(getCodexAdditionalDirectories()).toBeUndefined();
+  });
+});
+
+describe('buildCodexThreadOptions (Jest placeholder)', () => {
+  beforeEach(() => {
+    ['CTI_CODEX_SANDBOX_MODE', 'CTI_CODEX_APPROVAL_POLICY',
+      'CTI_CODEX_NETWORK_ACCESS', 'CTI_CODEX_ADDITIONAL_DIRECTORIES'].forEach(k => {
+      delete process.env[k];
+    });
+  });
+
+  it('should return empty object when no params and no env', () => {
+    // expect(buildCodexThreadOptions({})).toEqual({});
+  });
+
+  it('should pass through basic params', () => {
+    // expect(buildCodexThreadOptions({ model: 'gpt-5.3-codex' })).toMatchObject({ model: 'gpt-5.3-codex' });
+  });
+
+  it('should apply sandbox mode from env', () => {
+    process.env.CTI_CODEX_SANDBOX_MODE = 'workspace-write';
+    // expect(buildCodexThreadOptions({}).sandboxMode).toBe('workspace-write');
+  });
+
+  it('should apply approval policy override from env (higher priority)', () => {
+    process.env.CTI_CODEX_APPROVAL_POLICY = 'on-request';
+    // expect(buildCodexThreadOptions({ permissionMode: 'trusted' }).approvalPolicy).toBe('on-request');
+  });
+
+  it('should fall back to permissionMode derivation when no override', () => {
+    // expect(buildCodexThreadOptions({ permissionMode: 'trusted' }).approvalPolicy).toBe('never');
+  });
+
+  it('should NOT include sandboxMode when not set', () => {
+    // expect(buildCodexThreadOptions({})).not.toHaveProperty('sandboxMode');
   });
 });
 

@@ -9,6 +9,9 @@ SKILL_NAME="claude-to-im"
 CODEX_SKILLS_DIR="$HOME/.codex/skills"
 TARGET_DIR="$CODEX_SKILLS_DIR/$SKILL_NAME"
 SOURCE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+UPSTREAM_NAME="Claude-to-IM"
+UPSTREAM_REPO_URL="https://github.com/op7418/Claude-to-IM.git"
+UPSTREAM_DIR="$CODEX_SKILLS_DIR/$UPSTREAM_NAME"
 
 echo "Installing $SKILL_NAME skill for Codex..."
 
@@ -20,6 +23,23 @@ fi
 
 # Create skills directory
 mkdir -p "$CODEX_SKILLS_DIR"
+
+ensure_upstream_repo() {
+  if [ -d "$UPSTREAM_DIR/.git" ]; then
+    echo "Found upstream bridge repo at: $UPSTREAM_DIR"
+  elif [ -e "$UPSTREAM_DIR" ]; then
+    echo "Error: expected upstream repo path exists but is not a git checkout: $UPSTREAM_DIR"
+    exit 1
+  else
+    echo "Cloning upstream bridge repo..."
+    git clone "$UPSTREAM_REPO_URL" "$UPSTREAM_DIR"
+  fi
+
+  if [ ! -d "$UPSTREAM_DIR/node_modules" ] || [ ! -f "$UPSTREAM_DIR/dist/lib/bridge/context.js" ]; then
+    echo "Installing upstream bridge dependencies..."
+    (cd "$UPSTREAM_DIR" && npm install)
+  fi
+}
 
 # Check if already installed
 if [ -e "$TARGET_DIR" ]; then
@@ -42,6 +62,8 @@ else
   cp -R "$SOURCE_DIR" "$TARGET_DIR"
   echo "Copied to: $TARGET_DIR"
 fi
+
+ensure_upstream_repo
 
 # Ensure dependencies (need devDependencies for build step)
 if [ ! -d "$TARGET_DIR/node_modules" ] || [ ! -d "$TARGET_DIR/node_modules/@openai/codex-sdk" ]; then
