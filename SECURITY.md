@@ -2,7 +2,7 @@
 
 ## Credential Storage
 
-All credentials are stored in `~/.claude-to-im/config.env` with file permissions set to `600` (owner read/write only). This file is created during `setup` and never committed to version control.
+All credentials are stored in `~/.codex-to-im/config.env` with file permissions set to `600` (owner read/write only). This file is created during `setup` and never committed to version control.
 
 The `.gitignore` excludes `config.env` to prevent accidental commits.
 
@@ -36,15 +36,15 @@ To rotate compromised or expired tokens:
 
 1. Revoke the old token on the IM platform
 2. Generate a new token
-3. Run `/claude-to-im reconfigure` to update the stored credentials
-4. Run `/claude-to-im stop` then `/claude-to-im start` to apply changes
+3. Run `/codex-to-im reconfigure` to update the stored credentials
+4. Run `/codex-to-im stop` then `/codex-to-im start` to apply changes
 
 ## Leak Response
 
 If you suspect a token has been leaked:
 
 1. **Immediately revoke** the token on the respective IM platform
-2. Run `/claude-to-im stop` to halt the daemon
-3. Run `/claude-to-im reconfigure` with a new token
-4. Review `~/.claude-to-im/logs/` for unauthorized activity
-5. Run `/claude-to-im start` with the new credentials
+2. Run `/codex-to-im stop` to halt the daemon
+3. Run `/codex-to-im reconfigure` with a new token
+4. Review `~/.codex-to-im/logs/` for unauthorized activity
+5. Run `/codex-to-im start` with the new credentials

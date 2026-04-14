@@ -161,7 +161,7 @@ If the batch import UI is not available, add each scope manually via the search 
 
 **Step D — Start the bridge service**
 
-Run `/claude-to-im start` in Claude Code. This establishes the WebSocket long connection that Feishu needs to detect.
+Run `/codex-to-im start` in Claude Code. This establishes the WebSocket long connection that Feishu needs to detect.
 
 **Step E — Configure Events & Callbacks (long connection)**
 
@@ -190,10 +190,10 @@ If you already have a Feishu app configured, you need to:
    - `im:message:update` — Real-time card content updates
    - `im:message.reactions:read`, `im:message.reactions:write_only` — Typing indicator
 2. **Publish a new version** — Permission changes only take effect after a new version is approved
-3. **Start (or restart) the bridge** — Run `/claude-to-im start` so the WebSocket connection is active
+3. **Start (or restart) the bridge** — Run `/codex-to-im start` so the WebSocket connection is active
 4. **Add callback**: Go to Events & Callbacks, add `card.action.trigger` callback (card interaction for permission buttons). This step requires the bridge to be running — Feishu validates the WebSocket connection when saving.
 5. **Publish again** — The new callback requires another version publish + admin approval
-6. **Restart the bridge** — Run `/claude-to-im stop` then `/claude-to-im start` to pick up the new capabilities
+6. **Restart the bridge** — Run `/codex-to-im stop` then `/codex-to-im start` to pick up the new capabilities
 
 ### Domain (optional)
 
@@ -253,28 +253,28 @@ Instead, run the local QR helper from the installed skill directory:
 - Claude Code default install:
 
 ```bash
-cd ~/.claude/skills/claude-to-im
+cd ~/.claude/skills/codex-to-im
 npm run weixin:login
 ```
 
 - Codex default install:
 
 ```bash
-cd ~/.codex/skills/Claude-to-IM-skill
+cd ~/.codex/skills/Codex-to-IM-skill
 npm run weixin:login
 ```
 
-If you are running from a checked-out repo instead of an installed skill, use that repo's `Claude-to-IM-skill` directory.
+If you are running from a checked-out repo instead of an installed skill, use that repo's `Codex-to-IM-skill` directory.
 
 What happens next:
 
 1. The helper requests a fresh WeChat QR code
 2. It writes a local HTML file to:
-   `~/.claude-to-im/runtime/weixin-login.html`
+   `~/.codex-to-im/runtime/weixin-login.html`
 3. It tries to open that HTML file in your default browser automatically
 4. You scan the QR code with the WeChat app and confirm on your phone
 5. On success, the helper stores the linked account in:
-   `~/.claude-to-im/data/weixin-accounts.json`
+   `~/.codex-to-im/data/weixin-accounts.json`
 
 The filename stays plural for backward compatibility, but Weixin currently runs in single-account mode.
 

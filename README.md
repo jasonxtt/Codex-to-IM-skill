@@ -1,4 +1,4 @@
-# Claude-to-IM Skill
+# Codex-to-IM Skill
 
 Bridge Claude Code / Codex to IM platforms — chat with AI coding agents from Telegram, Discord, Feishu/Lark, QQ, or WeChat.
 
@@ -28,7 +28,7 @@ Claude Code / Codex → reads/writes your codebase
 - **Streaming preview** — see Claude's response as it types (Telegram & Discord)
 - **Session persistence** — conversations survive daemon restarts
 - **Secret protection** — tokens stored with `chmod 600`, auto-redacted in all logs
-- **Zero code required** — install the skill and run `/claude-to-im setup`, or tell Codex `claude-to-im setup`
+- **Zero code required** — install the skill and run `/codex-to-im setup`, or tell Codex `codex-to-im setup`
 
 ## Prerequisites
 
@@ -51,7 +51,7 @@ npx skills add jasonxtt/Codex-to-IM-skill
 After installation, tell Claude Code:
 
 ```text
-/claude-to-im setup
+/codex-to-im setup
 ```
 
 If you want WeChat specifically, you can also say:
@@ -63,7 +63,7 @@ If you want WeChat specifically, you can also say:
 #### Alternative: clone directly into Claude Code skills
 
 ```bash
-git clone https://github.com/jasonxtt/Codex-to-IM-skill.git ~/.claude/skills/claude-to-im
+git clone https://github.com/jasonxtt/Codex-to-IM-skill.git ~/.claude/skills/codex-to-im
 ```
 
 Claude Code discovers it automatically.
@@ -73,7 +73,7 @@ Claude Code discovers it automatically.
 ```bash
 git clone https://github.com/jasonxtt/Codex-to-IM-skill.git ~/code/Codex-to-IM-skill
 mkdir -p ~/.claude/skills
-ln -s ~/code/Codex-to-IM-skill ~/.claude/skills/claude-to-im
+ln -s ~/code/Codex-to-IM-skill ~/.claude/skills/codex-to-im
 ```
 
 ### Codex
@@ -91,12 +91,12 @@ For local development with a live checkout:
 bash ~/code/Codex-to-IM-skill/scripts/install-codex.sh --link
 ```
 
-The install script places the skill under `~/.codex/skills/claude-to-im`, installs dependencies, and builds the daemon.
+The install script places the skill under `~/.codex/skills/codex-to-im`, installs dependencies, and builds the daemon.
 
 After installation, tell Codex:
 
 ```text
-claude-to-im setup
+codex-to-im setup
 ```
 
 If you want WeChat specifically, you can also say:
@@ -108,17 +108,17 @@ If you want WeChat specifically, you can also say:
 #### Alternative: clone directly into Codex skills
 
 ```bash
-git clone https://github.com/jasonxtt/Codex-to-IM-skill.git ~/.codex/skills/claude-to-im
-cd ~/.codex/skills/claude-to-im
+git clone https://github.com/jasonxtt/Codex-to-IM-skill.git ~/.codex/skills/codex-to-im
+cd ~/.codex/skills/codex-to-im
 npm install
 npm run build
 ```
 
 ### Verify installation
 
-**Claude Code:** Start a new session and type `/` — you should see `claude-to-im` in the skill list. Or ask Claude: "What skills are available?"
+**Claude Code:** Start a new session and type `/` — you should see `codex-to-im` in the skill list. Or ask Claude: "What skills are available?"
 
-**Codex:** Start a new session and say `claude-to-im setup`, `start bridge`, or `帮我接微信桥接`.
+**Codex:** Start a new session and say `codex-to-im setup`, `start bridge`, or `帮我接微信桥接`.
 
 ## Updating the Skill
 
@@ -135,7 +135,7 @@ npx skills add jasonxtt/Codex-to-IM-skill
 If you installed via `git clone` or symlink:
 
 ```bash
-cd ~/.claude/skills/claude-to-im
+cd ~/.claude/skills/codex-to-im
 git pull
 npm install
 npm run build
@@ -144,8 +144,8 @@ npm run build
 Then tell Claude Code:
 
 ```text
-/claude-to-im doctor
-/claude-to-im start
+/codex-to-im doctor
+/codex-to-im start
 ```
 
 ### Codex
@@ -153,14 +153,14 @@ Then tell Claude Code:
 If you installed with the Codex install script in copy mode:
 
 ```bash
-rm -rf ~/.codex/skills/claude-to-im
+rm -rf ~/.codex/skills/codex-to-im
 bash ~/code/Codex-to-IM-skill/scripts/install-codex.sh
 ```
 
 If you installed with `--link` or cloned directly into the Codex skills directory:
 
 ```bash
-cd ~/.codex/skills/claude-to-im
+cd ~/.codex/skills/codex-to-im
 git pull
 npm install
 npm run build
@@ -169,7 +169,7 @@ npm run build
 Then tell Codex:
 
 ```text
-claude-to-im doctor
+codex-to-im doctor
 start bridge
 ```
 
@@ -180,13 +180,13 @@ start bridge
 **Claude Code**
 
 ```text
-/claude-to-im setup
+/codex-to-im setup
 ```
 
 **Codex**
 
 ```text
-claude-to-im setup
+codex-to-im setup
 ```
 
 The wizard will guide you through:
@@ -201,7 +201,7 @@ The wizard will guide you through:
 **Claude Code**
 
 ```text
-/claude-to-im start
+/codex-to-im start
 ```
 
 **Codex**
@@ -224,14 +224,14 @@ All commands are run inside Claude Code or Codex:
 
 | Claude Code | Codex (natural language) | Description |
 |---|---|---|
-| `/claude-to-im setup` | "claude-to-im setup" / "配置" | Interactive setup wizard |
-| `/claude-to-im start` | "start bridge" / "启动桥接" | Start the bridge daemon |
-| `/claude-to-im stop` | "stop bridge" / "停止桥接" | Stop the bridge daemon |
-| `/claude-to-im status` | "bridge status" / "状态" | Show daemon status |
-| `/claude-to-im logs` | "查看日志" | Show last 50 log lines |
-| `/claude-to-im logs 200` | "logs 200" | Show last 200 log lines |
-| `/claude-to-im reconfigure` | "reconfigure" / "修改配置" | Update config interactively |
-| `/claude-to-im doctor` | "doctor" / "诊断" | Diagnose issues |
+| `/codex-to-im setup` | "codex-to-im setup" / "配置" | Interactive setup wizard |
+| `/codex-to-im start` | "start bridge" / "启动桥接" | Start the bridge daemon |
+| `/codex-to-im stop` | "stop bridge" / "停止桥接" | Stop the bridge daemon |
+| `/codex-to-im status` | "bridge status" / "状态" | Show daemon status |
+| `/codex-to-im logs` | "查看日志" | Show last 50 log lines |
+| `/codex-to-im logs 200` | "logs 200" | Show last 200 log lines |
+| `/codex-to-im reconfigure` | "reconfigure" / "修改配置" | Update config interactively |
+| `/codex-to-im doctor` | "doctor" / "诊断" | Diagnose issues |
 
 ### Codex Runtime Permissions
 
@@ -307,11 +307,11 @@ The `setup` wizard provides inline guidance for every step. Here's a summary:
 > WeChat currently uses QR login, single-account mode, text-based permissions, and no streaming preview.
 
 1. Run the local QR helper from your installed skill directory:
-   - Claude Code default install: `cd ~/.claude/skills/claude-to-im && npm run weixin:login`
-   - Codex default install: `cd ~/.codex/skills/claude-to-im && npm run weixin:login`
-2. The helper writes `~/.claude-to-im/runtime/weixin-login.html` and tries to open it in your browser automatically
+   - Claude Code default install: `cd ~/.claude/skills/codex-to-im && npm run weixin:login`
+   - Codex default install: `cd ~/.codex/skills/codex-to-im && npm run weixin:login`
+2. The helper writes `~/.codex-to-im/runtime/weixin-login.html` and tries to open it in your browser automatically
 3. Scan the QR code with WeChat and confirm on your phone
-4. On success, the linked account is stored in `~/.claude-to-im/data/weixin-accounts.json`
+4. On success, the linked account is stored in `~/.codex-to-im/data/weixin-accounts.json`
 5. Running the helper again replaces the previously linked WeChat account
 
 Additional notes:
@@ -324,7 +324,7 @@ Additional notes:
 ## Architecture
 
 ```
-~/.claude-to-im/
+~/.codex-to-im/
 ├── config.env             ← Credentials & settings (chmod 600)
 ├── data/                  ← Persistent JSON storage
 │   ├── sessions.json
@@ -370,7 +370,7 @@ Additional notes:
 Run diagnostics:
 
 ```
-/claude-to-im doctor
+/codex-to-im doctor
 ```
 
 This checks: Node.js version, config file existence and permissions, token validity (live API calls), log directory, PID file consistency, and recent errors.
@@ -386,7 +386,7 @@ See [references/troubleshooting.md](references/troubleshooting.md) for more deta
 
 ## Security
 
-- All credentials stored in `~/.claude-to-im/config.env` with `chmod 600`
+- All credentials stored in `~/.codex-to-im/config.env` with `chmod 600`
 - Tokens are automatically redacted in all log output (pattern-based masking)
 - Allowed user/channel/guild lists restrict who can interact with the bot
 - The daemon is a local process with no inbound network listeners
