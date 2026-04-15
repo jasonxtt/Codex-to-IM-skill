@@ -309,6 +309,46 @@ describe('/model and /import command', () => {
     assert.equal(importedSession?.working_directory, '/tmp/imported-workdir');
   });
 
+  it('imports external session cwd when session_meta line is larger than 64KB', async () => {
+    const { _testOnly } = await import('../../lib/bridge/bridge-manager');
+    const adapter = createAdapter(sentMessages);
+    store.seedBinding('chat-4c', { model: 'gpt-5.3-codex', sdkSessionId: 'sdk-old' });
+    const externalSessionId = '019d7833-fadc-7ac1-94e1-dc91a8d37508';
+
+    const oldHome = process.env.HOME;
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cti-ext-home-'));
+    try {
+      process.env.HOME = tempHome;
+      writeExternalCodexSession(tempHome, {
+        id: externalSessionId,
+        cwd: '/tmp/imported-large-meta',
+        threadName: 'Imported Large Meta Session',
+        updatedAt: '2026-04-15T16:10:00.000Z',
+        oversizedMeta: true,
+      });
+      _testOnly.resetExternalCodexSessionCache();
+
+      await _testOnly.handleMessage(adapter, {
+        messageId: 'msg-import-large-meta',
+        address: { channelType: 'telegram', chatId: 'chat-4c', userId: 'user-4c' },
+        text: `/import ${externalSessionId}`,
+        timestamp: Date.now(),
+      });
+    } finally {
+      if (oldHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = oldHome;
+      }
+      _testOnly.resetExternalCodexSessionCache();
+    }
+
+    const updated = store.bindings.get('telegram:chat-4c');
+    const importedSession = updated ? store.sessions.get(updated.codepilotSessionId) : null;
+    assert.equal(updated?.workingDirectory, '/tmp/imported-large-meta');
+    assert.equal(importedSession?.working_directory, '/tmp/imported-large-meta');
+  });
+
   it('reuses an already imported Codex session when importing the same external id', async () => {
     const { _testOnly } = await import('../../lib/bridge/bridge-manager');
     const adapter = createAdapter(sentMessages);
@@ -419,20 +459,107 @@ describe('/model and /import command', () => {
       _testOnly.resetExternalCodexSessionCache();
     }
 
-    assert.ok(sentMessages.some((message) => message.text.includes('<b>外部 Codex CLI 会话</b>')));
+    assert.ok(sentMessages.some((message) => message.text.includes('外部 Codex CLI 会话（当前目录）')));
     assert.ok(sentMessages.some((message) => message.text.includes(`${externalSessionId.slice(0, 8)}...`)));
+  });
+
+  it('shows external Codex sessions across directories via /sessions external all', async () => {
+    const { _testOnly } = await import('../../lib/bridge/bridge-manager');
+    const adapter = createAdapter(sentMessages);
+    store.seedBinding('chat-8', { model: 'gpt-5.3-codex', sdkSessionId: 'sdk-old' });
+    const externalSessionIdA = '019d7833-fadc-7ac1-94e1-dc91a8d37509';
+    const externalSessionIdB = '019d7833-fadc-7ac1-94e1-dc91a8d37510';
+
+    const oldHome = process.env.HOME;
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cti-ext-home-'));
+    try {
+      process.env.HOME = tempHome;
+      writeExternalCodexSession(tempHome, {
+        id: externalSessionIdA,
+        cwd: '/tmp/test',
+        threadName: 'External Session A',
+        updatedAt: '2026-04-15T15:00:00.000Z',
+      });
+      writeExternalCodexSession(tempHome, {
+        id: externalSessionIdB,
+        cwd: '/tmp/another',
+        threadName: 'External Session B',
+        updatedAt: '2026-04-15T16:00:00.000Z',
+      });
+      _testOnly.resetExternalCodexSessionCache();
+
+      await _testOnly.handleMessage(adapter, {
+        messageId: 'msg-sessions-external-all',
+        address: { channelType: 'telegram', chatId: 'chat-8', userId: 'user-8' },
+        text: '/sessions external all',
+        timestamp: Date.now(),
+      });
+    } finally {
+      if (oldHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = oldHome;
+      }
+      _testOnly.resetExternalCodexSessionCache();
+    }
+
+    const latest = sentMessages[sentMessages.length - 1];
+    assert.ok(latest.text.includes('外部 Codex CLI 会话（全部目录）'));
+    assert.ok(latest.text.includes('/tmp/another'));
+    assert.ok(latest.text.includes('/tmp/test'));
+    assert.ok(latest.inlineButtons?.flat().some((button) => button.callbackData === `ui:resume_external:${externalSessionIdA}`));
+    assert.ok(latest.inlineButtons?.flat().some((button) => button.callbackData === `ui:resume_external:${externalSessionIdB}`));
+  });
+
+  it('resumes an external Codex session directly by /resume <codex_session_id>', async () => {
+    const { _testOnly } = await import('../../lib/bridge/bridge-manager');
+    const adapter = createAdapter(sentMessages);
+    store.seedBinding('chat-9', { model: 'gpt-5.3-codex', sdkSessionId: 'sdk-old' });
+    const externalSessionId = '019d7833-fadc-7ac1-94e1-dc91a8d37511';
+
+    const oldHome = process.env.HOME;
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cti-ext-home-'));
+    try {
+      process.env.HOME = tempHome;
+      writeExternalCodexSession(tempHome, {
+        id: externalSessionId,
+        cwd: '/tmp/resume-external',
+        threadName: 'Resume External Session',
+        updatedAt: '2026-04-15T18:00:00.000Z',
+      });
+      _testOnly.resetExternalCodexSessionCache();
+
+      await _testOnly.handleMessage(adapter, {
+        messageId: 'msg-resume-external-id',
+        address: { channelType: 'telegram', chatId: 'chat-9', userId: 'user-9' },
+        text: `/resume ${externalSessionId}`,
+        timestamp: Date.now(),
+      });
+    } finally {
+      if (oldHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = oldHome;
+      }
+      _testOnly.resetExternalCodexSessionCache();
+    }
+
+    const updated = store.bindings.get('telegram:chat-9');
+    assert.equal(updated?.sdkSessionId, externalSessionId);
+    assert.equal(updated?.workingDirectory, '/tmp/resume-external');
+    assert.ok(sentMessages.some((message) => message.text.includes('已恢复外部 Codex CLI 会话。')));
   });
 });
 
 function writeExternalCodexSession(
   tempHome: string,
-  options: { id: string; cwd: string; threadName: string; updatedAt: string },
+  options: { id: string; cwd: string; threadName: string; updatedAt: string; oversizedMeta?: boolean },
 ): void {
   const codexHome = path.join(tempHome, '.codex');
   const indexPath = path.join(codexHome, 'session_index.jsonl');
   const sessionsDir = path.join(codexHome, 'sessions', '2026', '04', '15');
   fs.mkdirSync(sessionsDir, { recursive: true });
-  fs.writeFileSync(indexPath, `${JSON.stringify({
+  fs.appendFileSync(indexPath, `${JSON.stringify({
     id: options.id,
     thread_name: options.threadName,
     updated_at: options.updatedAt,
@@ -446,6 +573,7 @@ function writeExternalCodexSession(
     payload: {
       id: options.id,
       cwd: options.cwd,
+      ...(options.oversizedMeta ? { base_instructions: 'x'.repeat(80 * 1024) } : {}),
     },
   })}\n`, 'utf-8');
 }

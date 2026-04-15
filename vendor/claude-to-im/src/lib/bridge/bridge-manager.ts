@@ -929,9 +929,9 @@ async function handleCommand(
         '<b>常用命令</b>',
         '/new [路径] - 新建会话',
         '/import &lt;codex_session_id&gt; - 导入 Codex CLI 会话',
-        '/resume [会话ID|external] - 恢复会话（默认当前目录最近一条）',
+        '/resume [会话ID|external] - 恢复会话（支持本地或 Codex CLI 会话 ID）',
         '/cwd [路径] - 目录面板或直接切换并新建会话',
-        '/sessions [all|external] - 查看会话（默认当前目录）',
+        '/sessions [all|external [all]] - 查看会话（含 Codex CLI 会话）',
         '/mode [plan|code|ask] - 查看或切换模式',
         '/model [模型名称] - 查看或切换模型',
         '/permission [ask|full|status] - 权限模式',
@@ -1059,18 +1059,10 @@ async function handleCommand(
               response = '恢复外部会话失败，请稍后重试。';
               break;
             }
-            const permissionProfile = getPermissionProfile(imported.binding.permissionProfile);
-            response = [
-              '已恢复外部 Codex CLI 会话。',
-              `会话: <code>${imported.binding.codepilotSessionId.slice(0, 8)}...</code>`,
-              `Codex: <code>${escapeHtml(external.id)}</code>`,
-              `目录: <code>${escapeHtml(imported.binding.workingDirectory || '~')}</code>`,
-              `来源: <i>${escapeHtml(external.threadName || '未命名')}</i>`,
-              `权限: <b>${permissionProfile}</b>`,
-            ].join('\n');
+            response = buildExternalResumeResponse(imported.binding, external);
             break;
           }
-          response = '当前目录下没有可恢复的历史会话。\n可用 /sessions all 或 /sessions external 查看其他会话。';
+          response = '当前目录下没有可恢复的历史会话。\n可用 /sessions all 或 /sessions external all 查看其他会话。';
           break;
         }
       } else {
@@ -1089,23 +1081,38 @@ async function handleCommand(
             response = '恢复外部会话失败，请稍后重试。';
             break;
           }
-          const permissionProfile = getPermissionProfile(imported.binding.permissionProfile);
-          response = [
-            '已恢复外部 Codex CLI 会话。',
-            `会话: <code>${imported.binding.codepilotSessionId.slice(0, 8)}...</code>`,
-            `Codex: <code>${escapeHtml(external.id)}</code>`,
-            `目录: <code>${escapeHtml(imported.binding.workingDirectory || '~')}</code>`,
-            `来源: <i>${escapeHtml(external.threadName || '未命名')}</i>`,
-            `权限: <b>${permissionProfile}</b>`,
-          ].join('\n');
+          response = buildExternalResumeResponse(imported.binding, external);
           break;
         }
         const resolved = resolveSessionSelection(allSessions, requestedSession);
-        if (resolved.error) {
+        if (resolved.session) {
+          targetSession = resolved.session;
+          break;
+        }
+        if (resolved.error && resolved.error.includes('匹配到多个会话')) {
           response = resolved.error;
           break;
         }
-        targetSession = resolved.session;
+        const externalResolved = resolveExternalSessionSelection(requestedSession);
+        if (externalResolved.error) {
+          response = externalResolved.error;
+          break;
+        }
+        if (externalResolved.session) {
+          const imported = importCodexSessionForAddress(
+            msg.address,
+            externalResolved.session.id,
+            currentBinding,
+          );
+          if (!imported) {
+            response = '恢复外部会话失败，请稍后重试。';
+            break;
+          }
+          response = buildExternalResumeResponse(imported.binding, externalResolved.session);
+          break;
+        }
+        response = '未找到会话。\n可用 /sessions all 或 /sessions external all 查看可恢复会话。';
+        break;
       }
 
       const rebound = targetSession
@@ -1226,12 +1233,24 @@ async function handleCommand(
     case '/sessions': {
       const currentBinding = router.resolve(msg.address);
       const requestedScope = args.trim().toLowerCase();
-      if (requestedScope === 'external') {
-        const externalView = buildExternalSessionsView(currentBinding.workingDirectory);
+      const scopeParts = requestedScope ? requestedScope.split(/\s+/).filter(Boolean) : [];
+      if (scopeParts[0] === 'external' || scopeParts[0] === 'codex') {
+        const second = scopeParts[1] || '';
+        if (scopeParts.length > 2 || (second && second !== 'all' && second !== 'cwd')) {
+          response = '用法: /sessions [all|external [all]]';
+          break;
+        }
+        const showExternalAll = second === 'all';
+        const externalView = buildExternalSessionsView(currentBinding.workingDirectory, showExternalAll);
         response = externalView.text;
+        responseButtons = externalView.inlineButtons;
         break;
       }
-      const showAll = requestedScope === 'all';
+      if (scopeParts.length > 1 || (scopeParts.length === 1 && scopeParts[0] !== 'all')) {
+        response = '用法: /sessions [all|external [all]]';
+        break;
+      }
+      const showAll = scopeParts[0] === 'all';
       const view = buildSessionsView(store, currentBinding, showAll);
       response = view.text;
       responseButtons = view.inlineButtons;
@@ -1306,9 +1325,9 @@ async function handleCommand(
         '',
         '/new [路径] - 新建会话',
         '/import &lt;codex_session_id&gt; - 导入 Codex CLI 会话',
-        '/resume [会话ID|external] - 恢复会话（默认当前目录最近一条）',
+        '/resume [会话ID|external] - 恢复会话（支持本地或 Codex CLI 会话 ID）',
         '/cwd [路径] - 打开目录选择，或直接切换并新建会话',
-        '/sessions [all|external] - 查看会话（默认当前目录）',
+        '/sessions [all|external [all]] - 查看会话（含 Codex CLI 会话）',
         '/mode [plan|code|ask] - 查看或切换模式',
         '/model [模型名称] - 查看或切换模型',
         '/permission [ask|full|status] - 查看或切换权限模式',
@@ -1348,6 +1367,20 @@ async function handleUiCallback(
     const currentBinding = router.resolve(msg.address);
     const showAll = callbackData.endsWith(':all');
     const view = buildSessionsView(store, currentBinding, showAll);
+    await deliver(adapter, {
+      address: msg.address,
+      text: view.text,
+      parseMode: 'HTML',
+      inlineButtons: view.inlineButtons,
+      replyToMessageId,
+    });
+    return true;
+  }
+
+  if (callbackData === 'ui:sessions:external:cwd' || callbackData === 'ui:sessions:external:all') {
+    const currentBinding = router.resolve(msg.address);
+    const showAll = callbackData.endsWith(':all');
+    const view = buildExternalSessionsView(currentBinding.workingDirectory, showAll);
     await deliver(adapter, {
       address: msg.address,
       text: view.text,
@@ -1441,6 +1474,61 @@ async function handleUiCallback(
         `目录: <code>${escapeHtml(rebound.workingDirectory || '~')}</code>`,
         `权限: <b>${permissionProfile}</b>`,
       ].join('\n'),
+      parseMode: 'HTML',
+      replyToMessageId,
+    });
+    return true;
+  }
+
+  if (callbackData.startsWith('ui:resume_external:')) {
+    const codexSessionId = callbackData.slice('ui:resume_external:'.length).trim();
+    if (!validateSessionId(codexSessionId)) {
+      await deliver(adapter, {
+        address: msg.address,
+        text: '外部会话 ID 无效。',
+        parseMode: 'plain',
+        replyToMessageId,
+      });
+      return true;
+    }
+
+    const external = findExternalCodexSessionById(codexSessionId);
+    if (!external) {
+      await deliver(adapter, {
+        address: msg.address,
+        text: '未找到外部 Codex CLI 会话，请刷新 /sessions external all 后重试。',
+        parseMode: 'plain',
+        replyToMessageId,
+      });
+      return true;
+    }
+
+    const currentBinding = router.resolve(msg.address);
+    const st = getState();
+    const currentTask = st.activeTasks.get(currentBinding.codepilotSessionId);
+    if (currentTask) {
+      currentTask.abort();
+      st.activeTasks.delete(currentBinding.codepilotSessionId);
+    }
+
+    const imported = importCodexSessionForAddress(
+      msg.address,
+      external.id,
+      currentBinding,
+    );
+    if (!imported) {
+      await deliver(adapter, {
+        address: msg.address,
+        text: '恢复外部会话失败，请稍后重试。',
+        parseMode: 'plain',
+        replyToMessageId,
+      });
+      return true;
+    }
+
+    await deliver(adapter, {
+      address: msg.address,
+      text: buildExternalResumeResponse(imported.binding, external),
       parseMode: 'HTML',
       replyToMessageId,
     });
@@ -1984,6 +2072,10 @@ function buildSessionsView(
       ? { text: '只看当前目录', callbackData: 'ui:sessions:cwd' }
       : { text: '显示全部目录', callbackData: 'ui:sessions:all' },
   ]);
+  buttons.push([
+    { text: 'Codex CLI 会话', callbackData: 'ui:sessions:external:cwd' },
+    { text: 'Codex CLI 全部', callbackData: 'ui:sessions:external:all' },
+  ]);
 
   return { text: lines.join('\n'), inlineButtons: buttons };
 }
@@ -2145,6 +2237,52 @@ function resolveSessionSelection(
   return { session: null, error: '未找到会话。' };
 }
 
+function resolveExternalSessionSelection(
+  rawSelection: string,
+): { session: ExternalCodexSessionSummary | null; error?: string } {
+  const selection = rawSelection.trim();
+  if (!selection) {
+    return { session: null, error: '用法: /resume <会话ID>' };
+  }
+
+  const externalSessions = loadExternalCodexSessions();
+  if (externalSessions.length === 0) {
+    return { session: null, error: '未找到外部 Codex CLI 会话。' };
+  }
+
+  if (validateSessionId(selection)) {
+    const exact = externalSessions.find((session) => session.id === selection) || null;
+    return exact
+      ? { session: exact }
+      : { session: null, error: '未找到会话。' };
+  }
+
+  const prefix = selection.toLowerCase();
+  const matches = externalSessions.filter((session) => session.id.toLowerCase().startsWith(prefix));
+  if (matches.length === 1) {
+    return { session: matches[0] };
+  }
+  if (matches.length > 1) {
+    return { session: null, error: '匹配到多个外部会话，请提供更长的 ID 前缀。' };
+  }
+  return { session: null, error: '未找到会话。' };
+}
+
+function buildExternalResumeResponse(
+  binding: ChannelBinding,
+  external: Pick<ExternalCodexSessionSummary, 'id' | 'threadName'>,
+): string {
+  const permissionProfile = getPermissionProfile(binding.permissionProfile);
+  return [
+    '已恢复外部 Codex CLI 会话。',
+    `会话: <code>${binding.codepilotSessionId.slice(0, 8)}...</code>`,
+    `Codex: <code>${escapeHtml(external.id)}</code>`,
+    `目录: <code>${escapeHtml(binding.workingDirectory || '~')}</code>`,
+    `来源: <i>${escapeHtml(external.threadName || '未命名')}</i>`,
+    `权限: <b>${permissionProfile}</b>`,
+  ].join('\n');
+}
+
 function summarizeSessionPreview(
   store: { getMessages(sessionId: string, opts?: { limit?: number }): { messages: Array<{ role: string; content: string }> } },
   sessionId: string,
@@ -2175,38 +2313,62 @@ function truncatePreview(text: string, maxLength: number): string {
   return text.slice(0, Math.max(0, maxLength - 3)).trimEnd() + '...';
 }
 
-function buildExternalSessionsView(currentWorkingDirectory: string): { text: string } {
+function buildExternalSessionsView(
+  currentWorkingDirectory: string,
+  showAll = false,
+): {
+  text: string;
+  inlineButtons?: OutboundMessage['inlineButtons'];
+} {
   const currentDir = normalizeWorkingDirectory(currentWorkingDirectory);
-  const externalSessions = loadExternalCodexSessions().filter((session) => (
-    normalizeWorkingDirectory(session.cwd) === currentDir
-  ));
+  const externalSessions = (showAll
+    ? loadExternalCodexSessions()
+    : loadExternalCodexSessions().filter((session) => (
+      normalizeWorkingDirectory(session.cwd) === currentDir
+    ))
+  ).slice(0, 12);
+
+  const switchScopeButton = showAll
+    ? [{ text: '只看当前目录', callbackData: 'ui:sessions:external:cwd' }]
+    : [{ text: '显示全部目录', callbackData: 'ui:sessions:external:all' }];
 
   if (externalSessions.length === 0) {
     return {
       text: [
-        '<b>外部 Codex CLI 会话</b>',
+        showAll ? '<b>外部 Codex CLI 会话（全部目录）</b>' : '<b>外部 Codex CLI 会话（当前目录）</b>',
         '',
         `目录: <code>${escapeHtml(currentDir || '~')}</code>`,
-        '当前目录没有发现外部会话。',
+        showAll ? '没有发现外部会话。' : '当前目录没有发现外部会话。',
         '可用 /import &lt;codex_session_id&gt; 手动导入。',
       ].join('\n'),
+      inlineButtons: [switchScopeButton],
     };
   }
 
   const lines = [
-    '<b>外部 Codex CLI 会话</b>',
+    showAll ? '<b>外部 Codex CLI 会话（全部目录）</b>' : '<b>外部 Codex CLI 会话（当前目录）</b>',
     '',
-    `目录: <code>${escapeHtml(currentDir || '~')}</code>`,
+    `目录: <code>${escapeHtml(currentDir || '~')}</code>${showAll ? '（筛选已关闭）' : ''}`,
     '',
   ];
-  for (let i = 0; i < Math.min(10, externalSessions.length); i += 1) {
+  const buttons: NonNullable<OutboundMessage['inlineButtons']> = [];
+  for (let i = 0; i < externalSessions.length; i += 1) {
     const session = externalSessions[i];
     lines.push(`${i + 1}. <code>${session.id.slice(0, 8)}...</code> ${escapeHtml(session.threadName || '未命名')} (${formatRelativeTimeLabel(session.updatedAt)})`);
+    if (showAll) {
+      lines.push(`   <code>${escapeHtml(session.cwd || '~')}</code>`);
+    }
+    if (i < 8) {
+      buttons.push([{ text: `恢复 ${session.id.slice(0, 8)}...`, callbackData: `ui:resume_external:${session.id}` }]);
+    }
   }
   lines.push('');
-  lines.push('使用 /resume external 恢复最新一条，或 /import &lt;id&gt; 导入指定会话。');
+  lines.push('可直接点击恢复，或发送 /resume &lt;codex_session_id&gt;。');
+  lines.push('发送 /resume external 可恢复当前目录最新一条。');
+  buttons.push(switchScopeButton);
+  buttons.push([{ text: '本地会话', callbackData: 'ui:sessions:cwd' }]);
 
-  return { text: lines.join('\n') };
+  return { text: lines.join('\n'), inlineButtons: buttons };
 }
 
 function findLatestExternalCodexSessionByCwd(currentWorkingDirectory: string): ExternalCodexSessionSummary | null {
@@ -2335,29 +2497,56 @@ function buildExternalCodexSessionFileMap(sessionsRoot: string): Map<string, str
 }
 
 function readExternalCodexSessionCwd(sessionPath: string): string | null {
+  const CHUNK_BYTES = 64 * 1024;
+  const MAX_SCAN_BYTES = 8 * 1024 * 1024;
   let fd: number | null = null;
+
+  const extractCwdFromLine = (line: string): string | null => {
+    const trimmed = line.trim();
+    if (!trimmed) return null;
+
+    let record: Record<string, unknown>;
+    try {
+      record = JSON.parse(trimmed) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+
+    if (record.type !== 'session_meta') return null;
+    const payload = (record.payload && typeof record.payload === 'object')
+      ? record.payload as Record<string, unknown>
+      : null;
+    const cwd = typeof payload?.cwd === 'string' ? payload.cwd.trim() : '';
+    return cwd || null;
+  };
+
   try {
     fd = fs.openSync(sessionPath, 'r');
-    const buffer = Buffer.alloc(64 * 1024);
-    const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, 0);
-    const header = buffer.toString('utf-8', 0, bytesRead);
-    for (const line of header.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
+    const buffer = Buffer.alloc(CHUNK_BYTES);
+    let position = 0;
+    let scannedBytes = 0;
+    let remainder = '';
 
-      let record: Record<string, unknown>;
-      try {
-        record = JSON.parse(trimmed) as Record<string, unknown>;
-      } catch {
-        continue;
+    while (scannedBytes < MAX_SCAN_BYTES) {
+      const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, position);
+      if (bytesRead <= 0) break;
+
+      position += bytesRead;
+      scannedBytes += bytesRead;
+
+      const chunk = remainder + buffer.toString('utf-8', 0, bytesRead);
+      const lines = chunk.split('\n');
+      remainder = lines.pop() || '';
+
+      for (const line of lines) {
+        const cwd = extractCwdFromLine(line);
+        if (cwd) return cwd;
       }
+    }
 
-      if (record.type !== 'session_meta') continue;
-      const payload = (record.payload && typeof record.payload === 'object')
-        ? record.payload as Record<string, unknown>
-        : null;
-      const cwd = typeof payload?.cwd === 'string' ? payload.cwd.trim() : '';
-      return cwd || null;
+    if (remainder) {
+      const cwd = extractCwdFromLine(remainder);
+      if (cwd) return cwd;
     }
     return null;
   } catch {
