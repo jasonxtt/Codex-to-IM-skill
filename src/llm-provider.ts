@@ -2,7 +2,7 @@
  * LLM Provider using @anthropic-ai/claude-agent-sdk query() function.
  *
  * Converts SDK stream events into the SSE format expected by
- * the claude-to-im bridge conversation engine.
+ * the codex-to-im bridge conversation engine.
  */
 
 import fs from 'node:fs';
@@ -114,7 +114,7 @@ export function buildSubprocessEnv(): Record<string, string> {
     }
     // Always pass through ANTHROPIC_* in claude/auto runtime —
     // third-party API providers need these to reach the CLI subprocess.
-    const runtime = process.env.CTI_RUNTIME || 'claude';
+    const runtime = process.env.CTI_RUNTIME || 'codex';
     if (runtime === 'claude' || runtime === 'auto') {
       for (const [k, v] of Object.entries(process.env)) {
         if (v !== undefined && k.startsWith('ANTHROPIC_')) out[k] = v;
@@ -584,7 +584,7 @@ export class SDKLLMProvider implements LLMProvider {
                 '• Claude CLI version too old (need >= 2.x) — run: claude --version',
                 '• Missing ANTHROPIC_* env vars in daemon — check config.env',
                 '',
-                'Run `/claude-to-im doctor` to diagnose.',
+                'Run `/codex-to-im doctor` to diagnose.',
               );
               userMessage = lines.join('\n');
             } else {

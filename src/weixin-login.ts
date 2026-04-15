@@ -41,7 +41,7 @@ export function buildQrHtml(session: LoginSession, qrSvg: string): string {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Claude-to-IM WeChat Login</title>
+    <title>Codex-to-IM WeChat Login</title>
     <style>
       :root { color-scheme: light; }
       body {
@@ -103,7 +103,7 @@ export function buildQrHtml(session: LoginSession, qrSvg: string): string {
   <body>
     <div class="wrap">
       <div class="card">
-        <h1>微信扫码登录 Claude-to-IM</h1>
+        <h1>微信扫码登录 Codex-to-IM</h1>
         <p>请用手机微信扫描下面的二维码，并在手机上确认登录授权。</p>
         <p class="muted">如果二维码过期，CLI 会自动刷新这个页面内容；如果浏览器没有更新，请手动刷新一次。</p>
         <div class="qr">

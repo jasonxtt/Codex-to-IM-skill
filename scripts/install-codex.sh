@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Install claude-to-im skill for Codex.
+# Install codex-to-im skill for Codex.
 # Usage: bash scripts/install-codex.sh [--link]
 #   --link  Create a symlink instead of copying (for development)
 
-SKILL_NAME="claude-to-im"
+SKILL_NAME="codex-to-im"
 CODEX_SKILLS_DIR="$HOME/.codex/skills"
 TARGET_DIR="$CODEX_SKILLS_DIR/$SKILL_NAME"
 SOURCE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -83,6 +83,6 @@ echo "Pruning dev dependencies..."
 
 echo ""
 echo "Done! Start a new Codex session and use:"
-echo "  claude-to-im setup    — configure IM platform credentials"
-echo "  claude-to-im start    — start the bridge daemon"
-echo "  claude-to-im doctor   — diagnose issues"
+echo "  codex-to-im setup    — configure IM platform credentials"
+echo "  codex-to-im start    — start the bridge daemon"
+echo "  codex-to-im doctor   — diagnose issues"

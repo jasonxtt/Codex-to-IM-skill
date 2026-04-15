@@ -12,7 +12,7 @@ import {
   MessageItemType,
 } from './weixin-types.js';
 
-const CHANNEL_VERSION = 'claude-to-im-skill-weixin/1.0';
+const CHANNEL_VERSION = 'codex-to-im-skill-weixin/1.0';
 const LONG_POLL_TIMEOUT_MS = 35_000;
 const API_TIMEOUT_MS = 15_000;
 const CONFIG_TIMEOUT_MS = 10_000;

@@ -1,9 +1,9 @@
 {
-  "skill_name": "claude-to-im",
+  "skill_name": "codex-to-im",
   "evals": [
     {
       "id": 1,
-      "prompt": "帮我设置 Telegram 机器人，我想用手机给 Claude 发消息",
+      "prompt": "帮我设置 Telegram 机器人，我想用手机给 Codex 发消息",
       "expected_output": "Should trigger the skill, identify 'setup' subcommand, read setup-guides.md, and start the interactive Telegram setup wizard asking for Bot Token",
       "files": []
     },

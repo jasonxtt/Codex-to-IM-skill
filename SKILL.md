@@ -1,11 +1,11 @@
 ---
-name: claude-to-im
+name: codex-to-im
 description: |
   Bridge THIS Claude Code or Codex session to Telegram, Discord, Feishu/Lark, QQ, or WeChat so the
-  user can chat with Claude from their phone. Use for: setting up, starting, stopping,
-  or diagnosing the claude-to-im bridge daemon; forwarding Claude replies to a messaging
-  app; any phrase like "claude-to-im", "bridge", "消息推送", "消息转发", "桥接",
-  "连上飞书", "手机上看claude", "启动后台服务", "诊断", "查看日志", "配置".
+  user can chat with Codex from their phone. Use for: setting up, starting, stopping,
+  or diagnosing the codex-to-im bridge daemon; forwarding agent replies to a messaging
+  app; any phrase like "codex-to-im", "bridge", "消息推送", "消息转发", "桥接",
+  "连上飞书", "手机上看codex", "启动后台服务", "诊断", "查看日志", "配置".
   Subcommands: setup, start, stop, status, logs, reconfigure, doctor.
   Do NOT use for: building standalone bots, webhook integrations, or coding with IM
   platform SDKs — those are regular programming tasks.
@@ -20,14 +20,14 @@ allowed-tools:
   - Glob
 ---
 
-# Claude-to-IM Bridge Skill
+# Codex-to-IM Bridge Skill
 
-You are managing the Claude-to-IM bridge.
-User data is stored at `~/.claude-to-im/`.
+You are managing the Codex-to-IM bridge.
+User data is stored at `~/.codex-to-im/`.
 
-The skill directory (SKILL_DIR) is at `~/.claude/skills/claude-to-im`.
-In Codex installs it may instead be `~/.codex/skills/Claude-to-IM-skill`.
-If neither path exists, fall back to Glob with pattern `**/skills/**/claude-to-im/SKILL.md` or `**/skills/**/Claude-to-IM-skill/SKILL.md` and derive the root from the result.
+The skill directory (SKILL_DIR) is at `~/.claude/skills/codex-to-im`.
+In Codex installs it may instead be `~/.codex/skills/codex-to-im`.
+If neither path exists, fall back to Glob with pattern `**/skills/**/codex-to-im/SKILL.md` and derive the root from the result.
 
 ## Command parsing
 
@@ -54,17 +54,17 @@ Before asking users for any platform credentials, read `SKILL_DIR/references/set
 Before executing any subcommand, detect which environment you are running in:
 
 1. **Claude Code** — `AskUserQuestion` tool is available. Use it for interactive setup wizards.
-2. **Codex / other** — `AskUserQuestion` is NOT available. Fall back to non-interactive guidance: explain the steps, show `SKILL_DIR/config.env.example`, and ask the user to create `~/.claude-to-im/config.env` manually.
+2. **Codex / other** — `AskUserQuestion` is NOT available. Fall back to non-interactive guidance: explain the steps, show `SKILL_DIR/config.env.example`, and ask the user to create `~/.codex-to-im/config.env` manually.
 
 You can test this by checking if AskUserQuestion is in your available tools list.
 
 ## Config check (applies to `start`, `stop`, `status`, `logs`, `reconfigure`, `doctor`)
 
-Before running any subcommand other than `setup`, check if `~/.claude-to-im/config.env` exists:
+Before running any subcommand other than `setup`, check if `~/.codex-to-im/config.env` exists:
 
 - **If it does NOT exist:**
   - In Claude Code: tell the user "No configuration found" and automatically start the `setup` wizard using AskUserQuestion.
-  - In Codex: tell the user "No configuration found. Please create `~/.claude-to-im/config.env` based on the example:" then show the contents of `SKILL_DIR/config.env.example` and stop. Don't attempt to start the daemon — without config.env the process will crash on startup and leave behind a stale PID file that blocks future starts.
+  - In Codex: tell the user "No configuration found. Please create `~/.codex-to-im/config.env` based on the example:" then show the contents of `SKILL_DIR/config.env.example` and stop. Don't attempt to start the daemon — without config.env the process will crash on startup and leave behind a stale PID file that blocks future starts.
 - **If it exists:** proceed with the requested subcommand.
 
 ## Subcommands
@@ -92,7 +92,7 @@ For each enabled channel, collect one credential at a time. Tell the user where 
 - **Discord**: Bot Token → confirm (masked) → Allowed User IDs → Allowed Channel IDs (optional) → Allowed Guild IDs (optional). **Important:** At least one of Allowed User IDs or Allowed Channel IDs must be set, otherwise the bot will reject all messages (default-deny).
 - **Feishu**: App ID → confirm → App Secret → confirm (masked) → Domain (optional) → Allowed User IDs (optional). After collecting credentials, explain the two-phase setup the user must complete:
   - **Phase 1** (before starting bridge): (A) batch-add permissions, (B) enable bot capability, (C) publish first version + admin approve. This makes permissions and bot effective.
-  - **Phase 2** (requires running bridge): (D) run `/claude-to-im start`, (E) configure events (`im.message.receive_v1`) and callback (`card.action.trigger`) with long connection mode, (F) publish second version + admin approve.
+  - **Phase 2** (requires running bridge): (D) run `/codex-to-im start`, (E) configure events (`im.message.receive_v1`) and callback (`card.action.trigger`) with long connection mode, (F) publish second version + admin approve.
   - **Why two phases:** Feishu validates WebSocket connection when saving event subscription — if the bridge isn't running, saving will fail. The bridge needs published permissions to connect.
   - Keep this to a short checklist — show the full guide only if asked.
 - **QQ**: Collect two required fields, then optional ones:
@@ -106,18 +106,18 @@ For each enabled channel, collect one credential at a time. Tell the user where 
 - **Weixin**: Do not ask for a static token. Instead:
   1. Tell the user this channel uses QR login, not manual credential entry.
   2. Run `cd SKILL_DIR && npm run weixin:login`
-  3. The helper writes `~/.claude-to-im/runtime/weixin-login.html` and tries to open it automatically in the local browser.
+  3. The helper writes `~/.codex-to-im/runtime/weixin-login.html` and tries to open it automatically in the local browser.
   4. If auto-open fails, tell the user to open that HTML file manually and scan the QR code with WeChat.
   5. Wait for the helper to report success, then confirm that the linked account was saved locally.
-  - Explain briefly: the linked Weixin account is stored in `~/.claude-to-im/data/weixin-accounts.json`. Running the helper again replaces the previously linked account.
+  - Explain briefly: the linked Weixin account is stored in `~/.codex-to-im/data/weixin-accounts.json`. Running the helper again replaces the previously linked account.
   - Explain briefly: `CTI_WEIXIN_MEDIA_ENABLED` only controls inbound image/file/video downloads. For voice messages, the bridge only accepts the text returned by WeChat's built-in speech-to-text. If WeChat does not provide a transcript, the bridge replies with an error instead of downloading/transcribing raw audio.
 
 **Step 3 — General settings**
 
 Ask for runtime, default working directory, model, and mode:
-- **Runtime**: `claude` (default), `codex`, `auto`
-  - `claude` — uses Claude Code CLI + Claude Agent SDK (requires `claude` CLI installed)
+- **Runtime**: `codex` (default), `claude`, `auto`
   - `codex` — uses OpenAI Codex SDK (requires `codex` CLI; auth via `codex auth login` or `OPENAI_API_KEY`)
+  - `claude` — uses Claude Code CLI + Claude Agent SDK (requires `claude` CLI installed)
   - `auto` — tries Claude first, falls back to Codex if Claude CLI not found
 - **Working Directory**: default `$CWD`
 - **Model** (optional): Leave blank to inherit the runtime's own default model. If the user wants to override, ask them to enter a model name. Do NOT hardcode or suggest specific model names — the available models change over time.
@@ -127,22 +127,22 @@ Ask for runtime, default working directory, model, and mode:
 
 1. Show a final summary table with all settings (secrets masked to last 4 chars)
 2. Ask user to confirm before writing
-3. Use Bash to create directory structure: `mkdir -p ~/.claude-to-im/{data,logs,runtime,data/messages}`
-4. Use Write to create `~/.claude-to-im/config.env` with all settings in KEY=VALUE format
-5. Use Bash to set permissions: `chmod 600 ~/.claude-to-im/config.env`
+3. Use Bash to create directory structure: `mkdir -p ~/.codex-to-im/{data,logs,runtime,data/messages}`
+4. Use Write to create `~/.codex-to-im/config.env` with all settings in KEY=VALUE format
+5. Use Bash to set permissions: `chmod 600 ~/.codex-to-im/config.env`
 6. Validate tokens — read `SKILL_DIR/references/token-validation.md` for the exact commands and expected responses for each platform. This catches typos and wrong credentials before the user tries to start the daemon. For Weixin, a successful QR login already counts as validation.
 7. Report results with a summary table. If any validation fails, explain what might be wrong and how to fix it.
-8. On success, tell the user: "Setup complete! Run `/claude-to-im start` to start the bridge."
+8. On success, tell the user: "Setup complete! Run `/codex-to-im start` to start the bridge."
 
 ### `start`
 
-**Pre-check:** Verify `~/.claude-to-im/config.env` exists (see "Config check" above). Without it, the daemon will crash immediately and leave a stale PID file.
+**Pre-check:** Verify `~/.codex-to-im/config.env` exists (see "Config check" above). Without it, the daemon will crash immediately and leave a stale PID file.
 
 Run: `bash "SKILL_DIR/scripts/daemon.sh" start`
 
 Show the output to the user. If it fails, tell the user:
-- Run `doctor` to diagnose: `/claude-to-im doctor`
-- Check recent logs: `/claude-to-im logs`
+- Run `doctor` to diagnose: `/codex-to-im doctor`
+- Check recent logs: `/codex-to-im logs`
 
 ### `stop`
 
@@ -159,13 +159,13 @@ Run: `bash "SKILL_DIR/scripts/daemon.sh" logs N`
 
 ### `reconfigure`
 
-1. Read current config from `~/.claude-to-im/config.env`
+1. Read current config from `~/.codex-to-im/config.env`
 2. Show current settings in a clear table format, with all secrets masked (only last 4 chars visible)
 3. Use AskUserQuestion to ask what the user wants to change
 4. When collecting new values, tell the user where to find the value; only show the full guide from `SKILL_DIR/references/setup-guides.md` if they ask for help
 5. Update the config file atomically (write to tmp, rename)
 6. Re-validate any changed tokens
-7. Remind user: "Run `/claude-to-im stop` then `/claude-to-im start` to apply the changes."
+7. Remind user: "Run `/codex-to-im stop` then `/codex-to-im start` to apply the changes."
 
 If the user wants to switch Weixin accounts during `reconfigure`, run `cd SKILL_DIR && npm run weixin:login` again. Each successful scan replaces the previously linked local account.
 
@@ -189,4 +189,4 @@ For more complex issues (messages not received, permission timeouts, high memory
 - Always mask secrets in output (show only last 4 characters) — users often share terminal output in bug reports, so exposed tokens would be a security incident.
 - Always check for config.env before starting the daemon — without it the process crashes on startup and leaves a stale PID file that blocks future starts (requiring manual cleanup).
 - The daemon runs as a background Node.js process managed by platform supervisor (launchd on macOS, setsid on Linux, WinSW/NSSM on Windows).
-- Config persists at `~/.claude-to-im/config.env` — survives across sessions.
+- Config persists at `~/.codex-to-im/config.env` — survives across sessions.

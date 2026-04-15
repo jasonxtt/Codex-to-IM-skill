@@ -398,7 +398,7 @@ export function getCodexSandboxMode(): 'read-only' | 'workspace-write' | 'danger
   if (!val) return undefined;
   const valid = ['read-only', 'workspace-write', 'danger-full-access'];
   if (!valid.includes(val)) {
-    console.warn(`[claude-to-im] Invalid CTI_CODEX_SANDBOX_MODE="${val}", ignoring. Valid: ${valid.join(', ')}`);
+    console.warn(`[codex-to-im] Invalid CTI_CODEX_SANDBOX_MODE="${val}", ignoring. Valid: ${valid.join(', ')}`);
     return undefined;
   }
   return val as any;
@@ -409,7 +409,7 @@ export function getCodexApprovalPolicyOverride(): 'untrusted' | 'on-request' | '
   if (!val) return undefined;
   const valid = ['untrusted', 'on-request', 'on-failure', 'never'];
   if (!valid.includes(val)) {
-    console.warn(`[claude-to-im] Invalid CTI_CODEX_APPROVAL_POLICY="${val}", ignoring. Valid: ${valid.join(', ')}`);
+    console.warn(`[codex-to-im] Invalid CTI_CODEX_APPROVAL_POLICY="${val}", ignoring. Valid: ${valid.join(', ')}`);
     return undefined;
   }
   return val as any;
@@ -419,7 +419,7 @@ export function getCodexNetworkAccessEnabled(): boolean | undefined {
   const val = process.env.CTI_CODEX_NETWORK_ACCESS;
   if (!val) return undefined;
   if (val !== 'true' && val !== 'false') {
-    console.warn(`[claude-to-im] Invalid CTI_CODEX_NETWORK_ACCESS="${val}", ignoring. Use true/false.`);
+    console.warn(`[codex-to-im] Invalid CTI_CODEX_NETWORK_ACCESS="${val}", ignoring. Use true/false.`);
     return undefined;
   }
   return val === 'true';

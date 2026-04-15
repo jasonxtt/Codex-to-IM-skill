@@ -142,8 +142,8 @@ class CodexAppServerClient {
 
     this.initialized = this.sendRequest('initialize', {
       clientInfo: {
-        name: 'claude_to_im',
-        title: 'claude-to-im',
+        name: 'codex_to_im',
+        title: 'codex-to-im',
         version: '0.1.0',
       },
       capabilities: {
@@ -469,13 +469,13 @@ export class CodexAppServerBridge {
       client.onRequest('execCommandApproval', (message) => this.handleLegacyExecApprovalRequest(message)),
       client.onRequest('applyPatchApproval', (message) => this.handleLegacyPatchApprovalRequest(message)),
       client.onRequest('item/tool/requestUserInput', async () => {
-        throw new Error('Codex user-input requests are not supported by claude-to-im');
+        throw new Error('Codex user-input requests are not supported by codex-to-im');
       }),
       client.onRequest('item/tool/call', async () => {
-        throw new Error('Codex app tool calls are not supported by claude-to-im');
+        throw new Error('Codex app tool calls are not supported by codex-to-im');
       }),
       client.onRequest('mcpServer/elicitation/request', async () => {
-        throw new Error('MCP elicitation requests are not supported by claude-to-im');
+        throw new Error('MCP elicitation requests are not supported by codex-to-im');
       }),
       client.onClose((error) => {
         this.client = null;

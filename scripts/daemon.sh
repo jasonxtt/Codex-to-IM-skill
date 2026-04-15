@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-CTI_HOME="${CTI_HOME:-$HOME/.claude-to-im}"
+CTI_HOME="${CTI_HOME:-$HOME/.codex-to-im}"
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PID_FILE="$CTI_HOME/runtime/bridge.pid"
 STATUS_FILE="$CTI_HOME/runtime/status.json"
@@ -43,7 +43,7 @@ clean_env() {
 
   local runtime
   runtime=$(grep "^CTI_RUNTIME=" "$CTI_HOME/config.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'" | tr -d '"' || true)
-  runtime="${runtime:-claude}"
+  runtime="${runtime:-codex}"
 
   local mode="${CTI_ENV_ISOLATION:-inherit}"
   if [ "$mode" = "strict" ]; then

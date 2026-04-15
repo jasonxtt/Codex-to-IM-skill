@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-CTI_HOME="$HOME/.claude-to-im"
+CTI_HOME="$HOME/.codex-to-im"
 CONFIG_FILE="$CTI_HOME/config.env"
 PID_FILE="$CTI_HOME/runtime/bridge.pid"
 LOG_FILE="$CTI_HOME/logs/bridge.log"
@@ -37,9 +37,19 @@ get_config() { grep "^$1=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d= -f2- |
 
 # --- Read runtime setting ---
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-UPSTREAM_DIR="$(cd "$SKILL_DIR/.." && pwd)/Claude-to-IM"
+SKILL_PARENT="$(cd "$SKILL_DIR/.." && pwd)"
+UPSTREAM_DIR=""
+for candidate in "$SKILL_PARENT/Codex-to-IM" "$SKILL_PARENT/Claude-to-IM"; do
+  if [ -d "$candidate" ]; then
+    UPSTREAM_DIR="$candidate"
+    break
+  fi
+done
+if [ -z "$UPSTREAM_DIR" ]; then
+  UPSTREAM_DIR="$SKILL_PARENT/Codex-to-IM"
+fi
 CTI_RUNTIME=$(get_config CTI_RUNTIME)
-CTI_RUNTIME="${CTI_RUNTIME:-claude}"
+CTI_RUNTIME="${CTI_RUNTIME:-codex}"
 echo "Runtime: $CTI_RUNTIME"
 echo ""
 
@@ -47,7 +57,7 @@ echo ""
 if [ -d "$UPSTREAM_DIR/.git" ] || [ -f "$UPSTREAM_DIR/package.json" ]; then
   check "Upstream bridge repo available ($UPSTREAM_DIR)" 0
 else
-  check "Upstream bridge repo available (missing $UPSTREAM_DIR; reinstall skill or clone https://github.com/op7418/Claude-to-IM.git there)" 1
+  check "Bridge library repo available (missing $UPSTREAM_DIR; reinstall skill or place the bridge library repo next to the skill)" 1
 fi
 
 if [ -f "$UPSTREAM_DIR/dist/lib/bridge/context.js" ]; then
@@ -181,7 +191,7 @@ if [ "$CTI_RUNTIME" = "claude" ] || [ "$CTI_RUNTIME" = "auto" ]; then
   if [ "$HAS_ANTHROPIC_CONFIG" = "true" ]; then
     check "ANTHROPIC_* vars in config.env (third-party API provider)" 0
 
-    PLIST_FILE="$HOME/Library/LaunchAgents/com.claude-to-im.bridge.plist"
+    PLIST_FILE="$HOME/Library/LaunchAgents/com.codex-to-im.bridge.plist"
 
     # On macOS, verify the launchd plist also has the vars
     if [ "$(uname -s)" = "Darwin" ] && [ -f "$PLIST_FILE" ]; then
