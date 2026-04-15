@@ -348,6 +348,7 @@ export class TelegramAdapter extends BaseChannelAdapter {
         { command: 'resume', description: '恢复会话（默认当前目录最近一条）' },
         { command: 'cwd', description: '打开目录面板或直接切换目录' },
         { command: 'mode', description: '切换模式：plan / code / ask' },
+        { command: 'model', description: '查看或切换模型' },
         { command: 'permission', description: '权限模式：ask / full / status / 面板' },
         { command: 'status', description: '查看当前状态' },
         { command: 'sessions', description: '查看会话（当前目录或全部目录）' },

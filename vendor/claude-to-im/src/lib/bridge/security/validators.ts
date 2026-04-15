@@ -12,8 +12,10 @@ import * as path from 'path';
 const MAX_INPUT_LENGTH = 32_000; // Claude's effective context limit
 const MAX_PATH_LENGTH = 1024;
 const SESSION_ID_PATTERN = /^[0-9a-f-]{32,64}$/i;
+const MAX_MODEL_LENGTH = 128;
 const VALID_MODES = ['plan', 'code', 'ask'] as const;
 const VALID_PERMISSION_PROFILES = ['ask', 'full', 'status'] as const;
+const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:+/-]*$/;
 
 /**
  * Patterns that indicate shell injection or dangerous input.
@@ -134,4 +136,13 @@ export function validatePermissionProfile(
   value: string,
 ): value is typeof VALID_PERMISSION_PROFILES[number] {
   return VALID_PERMISSION_PROFILES.includes(value as typeof VALID_PERMISSION_PROFILES[number]);
+}
+
+/**
+ * Validate /model parameter.
+ */
+export function validateModel(model: string): boolean {
+  const trimmed = model.trim();
+  if (!trimmed || trimmed.length > MAX_MODEL_LENGTH) return false;
+  return MODEL_ID_PATTERN.test(trimmed);
 }

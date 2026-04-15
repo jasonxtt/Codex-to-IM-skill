@@ -7,6 +7,9 @@
  * Uses globalThis to survive Next.js HMR in development.
  */
 
+import { spawn } from 'node:child_process';
+import readline from 'node:readline';
+
 import type {
   BridgeStatus,
   InboundMessage,
@@ -35,6 +38,7 @@ import {
   sanitizeInput,
   validateMode,
   validatePermissionProfile,
+  validateModel,
 } from './security/validators.js';
 
 const GLOBAL_KEY = '__bridge_manager__';
@@ -46,6 +50,7 @@ const KNOWN_SLASH_COMMANDS = new Set([
   '/bind',
   '/cwd',
   '/mode',
+  '/model',
   '/permission',
   '/status',
   '/sessions',
@@ -53,6 +58,31 @@ const KNOWN_SLASH_COMMANDS = new Set([
   '/perm',
   '/help',
 ]);
+const MODEL_PANEL_PRESETS = [
+  { id: 'gpt-5.4', label: 'GPT-5.4' },
+  { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
+  { id: 'gpt-5.3-codex-spark', label: 'GPT-5.3 Spark' },
+  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+  { id: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 Thinking' },
+  { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro' },
+  { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash' },
+] as const;
+const MODEL_DEFAULT_CALLBACK = 'ui:model:default';
+const MODEL_CATALOG_TTL_MS = 5 * 60 * 1000;
+const MODEL_LIST_TIMEOUT_MS = 5_000;
+
+interface ModelOption {
+  id: string;
+  label: string;
+}
+
+interface ModelCatalog {
+  models: ModelOption[];
+  source: 'dynamic' | 'fallback';
+}
+
+let modelCatalogCache: { catalog: ModelCatalog; expiresAt: number } | null = null;
+let modelCatalogInflight: Promise<ModelCatalog> | null = null;
 
 // ── Streaming preview helpers ──────────────────────────────────
 
@@ -887,6 +917,8 @@ async function handleCommand(
         '/resume [会话ID] - 恢复会话（默认当前目录最近一条）',
         '/cwd [路径] - 目录面板或直接切换并新建会话',
         '/sessions [all] - 查看会话（默认当前目录）',
+        '/mode [plan|code|ask] - 查看或切换模式',
+        '/model [模型名称] - 查看或切换模型',
         '/permission [ask|full|status] - 权限模式',
         '/status - 查看当前状态',
         '/stop - 停止当前任务',
@@ -1027,6 +1059,30 @@ async function handleCommand(
       break;
     }
 
+    case '/model': {
+      const binding = router.resolve(msg.address);
+      const requestedModel = normalizeModelSelection(args);
+      if (requestedModel === null) {
+        const panel = await loadModelPanel(binding.model);
+        response = panel.text;
+        responseButtons = panel.inlineButtons;
+        break;
+      }
+      if (requestedModel !== '' && !validateModel(requestedModel)) {
+        response = [
+          '用法: /model <模型名称>',
+          '例如: /model gpt-5.4',
+          '恢复默认模型: /model default',
+        ].join('\n');
+        break;
+      }
+      applyModelSelection(binding, requestedModel);
+      const panel = await loadModelPanel(requestedModel);
+      response = panel.text;
+      responseButtons = panel.inlineButtons;
+      break;
+    }
+
     case '/status': {
       const binding = router.resolve(msg.address);
       const permissionProfile = getPermissionProfile(binding.permissionProfile);
@@ -1054,6 +1110,9 @@ async function handleCommand(
         ],
         [
           { text: '权限设置', callbackData: 'ui:permission:menu' },
+          { text: '模型设置', callbackData: 'ui:model:menu' },
+        ],
+        [
           { text: '切换目录', callbackData: 'ui:cwd:menu' },
         ],
       ];
@@ -1140,8 +1199,9 @@ async function handleCommand(
         '/resume [会话ID] - 恢复会话（默认当前目录最近一条）',
         '/cwd [路径] - 打开目录选择，或直接切换并新建会话',
         '/sessions [all] - 查看会话（默认当前目录）',
-        '/permission [ask|full|status] - 查看或切换权限模式',
         '/mode [plan|code|ask] - 查看或切换模式',
+        '/model [模型名称] - 查看或切换模型',
+        '/permission [ask|full|status] - 查看或切换权限模式',
         '/status - 查看当前状态',
         '/stop - 停止当前任务',
         '/perm allow|allow_session|deny &lt;id&gt; - 处理权限请求',
@@ -1339,6 +1399,62 @@ async function handleUiCallback(
     return true;
   }
 
+  // ui:model:* — model selection panel
+  if (callbackData === 'ui:model:menu' || callbackData === 'ui:model:status') {
+    const binding = router.resolve(msg.address);
+    const panel = await loadModelPanel(binding.model);
+    await deliver(adapter, {
+      address: msg.address,
+      text: panel.text,
+      parseMode: 'HTML',
+      inlineButtons: panel.inlineButtons,
+      replyToMessageId,
+    });
+    return true;
+  }
+
+  if (callbackData === MODEL_DEFAULT_CALLBACK) {
+    const binding = router.resolve(msg.address);
+    applyModelSelection(binding, '');
+    const panel = await loadModelPanel('');
+    await deliver(adapter, {
+      address: msg.address,
+      text: panel.text,
+      parseMode: 'HTML',
+      inlineButtons: panel.inlineButtons,
+      replyToMessageId,
+    });
+    return true;
+  }
+
+  if (callbackData.startsWith('ui:model:')) {
+    const modelId = callbackData.slice('ui:model:'.length);
+    if (!modelId || !validateModel(modelId)) {
+      // Refresh panel on invalid model
+      const binding = router.resolve(msg.address);
+      const panel = await loadModelPanel(binding.model);
+      await deliver(adapter, {
+        address: msg.address,
+        text: panel.text,
+        parseMode: 'HTML',
+        inlineButtons: panel.inlineButtons,
+        replyToMessageId,
+      });
+      return true;
+    }
+    const binding = router.resolve(msg.address);
+    applyModelSelection(binding, modelId);
+    const panel = await loadModelPanel(modelId);
+    await deliver(adapter, {
+      address: msg.address,
+      text: panel.text,
+      parseMode: 'HTML',
+      inlineButtons: panel.inlineButtons,
+      replyToMessageId,
+    });
+    return true;
+  }
+
   return false;
 }
 
@@ -1435,6 +1551,281 @@ function buildModePanel(mode: 'plan' | 'code' | 'ask'): {
     ],
   ];
   return { text, inlineButtons };
+}
+
+function normalizeModelSelection(rawInput: string): string | null {
+  const trimmed = rawInput.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed.toLowerCase() === 'default') {
+    return '';
+  }
+  return trimmed;
+}
+
+function applyModelSelection(
+  binding: { id: string; codepilotSessionId: string; model: string },
+  nextModel: string,
+): void {
+  const { store } = getBridgeContext();
+  if (binding.model === nextModel) {
+    return;
+  }
+  router.updateBinding(binding.id, {
+    model: nextModel,
+    sdkSessionId: '',
+  });
+  store.updateSessionModel(binding.codepilotSessionId, nextModel);
+  store.updateSdkSessionId(binding.codepilotSessionId, '');
+}
+
+async function loadModelPanel(currentModel?: string): Promise<{
+  text: string;
+  inlineButtons: NonNullable<OutboundMessage['inlineButtons']>;
+}> {
+  const catalog = await loadModelCatalog();
+  return buildModelPanel(currentModel, catalog);
+}
+
+async function loadModelCatalog(): Promise<ModelCatalog> {
+  if (modelCatalogCache && modelCatalogCache.expiresAt > Date.now()) {
+    return modelCatalogCache.catalog;
+  }
+
+  if (!modelCatalogInflight) {
+    modelCatalogInflight = fetchModelCatalog()
+      .then((catalog) => {
+        modelCatalogCache = {
+          catalog,
+          expiresAt: Date.now() + MODEL_CATALOG_TTL_MS,
+        };
+        return catalog;
+      })
+      .finally(() => {
+        modelCatalogInflight = null;
+      });
+  }
+
+  return await modelCatalogInflight;
+}
+
+async function fetchModelCatalog(): Promise<ModelCatalog> {
+  try {
+    const models = await queryCodexModelCatalog();
+    if (models.length > 0) {
+      return { models, source: 'dynamic' };
+    }
+  } catch (error) {
+    console.warn('[bridge-manager] Failed to query Codex model catalog:', error);
+  }
+
+  return {
+    models: MODEL_PANEL_PRESETS.map((model) => ({ ...model })),
+    source: 'fallback',
+  };
+}
+
+async function queryCodexModelCatalog(): Promise<ModelOption[]> {
+  return await new Promise<ModelOption[]>((resolve, reject) => {
+    const child = spawn('codex', ['app-server', '--listen', 'stdio://'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: process.env,
+    });
+    const stdout = readline.createInterface({ input: child.stdout });
+    let resolved = false;
+    let initialized = false;
+    let stderrBuffer = '';
+    const timeout = setTimeout(() => {
+      finishReject(new Error('Timed out while loading Codex models'));
+    }, MODEL_LIST_TIMEOUT_MS);
+
+    function cleanup(): void {
+      clearTimeout(timeout);
+      stdout.close();
+      child.removeAllListeners();
+    }
+
+    function finishResolve(models: ModelOption[]): void {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      child.kill('SIGTERM');
+      resolve(models);
+    }
+
+    function finishReject(error: Error): void {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      child.kill('SIGTERM');
+      reject(error);
+    }
+
+    stdout.on('line', (line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+
+      let message: Record<string, unknown>;
+      try {
+        message = JSON.parse(trimmed) as Record<string, unknown>;
+      } catch {
+        return;
+      }
+
+      if (message.id === 1) {
+        initialized = true;
+        child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'initialized' })}\n`);
+        child.stdin.write(`${JSON.stringify({
+          jsonrpc: '2.0',
+          id: 2,
+          method: 'model/list',
+          params: { includeHidden: false },
+        })}\n`);
+        return;
+      }
+
+      if (message.id === 2) {
+        if (message.error && typeof message.error === 'object') {
+          const err = message.error as { message?: unknown };
+          finishReject(new Error(typeof err.message === 'string' ? err.message : 'model/list failed'));
+          return;
+        }
+
+        const result = message.result as { models?: unknown; data?: unknown } | undefined;
+        const models = extractModelCatalogEntries(result);
+        finishResolve(models);
+      }
+    });
+
+    child.stderr.on('data', (chunk: string | Buffer) => {
+      stderrBuffer += String(chunk).trim();
+    });
+
+    child.once('error', (error) => {
+      finishReject(error);
+    });
+
+    child.once('close', () => {
+      if (!resolved) {
+        const suffix = stderrBuffer ? `: ${stderrBuffer}` : '';
+        const phase = initialized ? 'while waiting for model/list' : 'before initialization';
+        finishReject(new Error(`codex app-server exited ${phase}${suffix}`));
+      }
+    });
+
+    child.stdin.write(`${JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        clientInfo: {
+          name: 'codex_to_im_bridge',
+          title: 'codex-to-im',
+          version: '0.1.0',
+        },
+        capabilities: {
+          experimentalApi: true,
+          optOutNotificationMethods: ['thread/started', 'item/agentMessage/delta'],
+        },
+      },
+    })}\n`);
+  });
+}
+
+function extractModelCatalogEntries(
+  result: { models?: unknown; data?: unknown } | undefined,
+): ModelOption[] {
+  if (!result || typeof result !== 'object') {
+    return [];
+  }
+
+  if (Array.isArray(result.data)) {
+    return normalizeModelCatalog(result.data);
+  }
+
+  if (Array.isArray(result.models)) {
+    return normalizeModelCatalog(result.models);
+  }
+
+  return [];
+}
+
+function normalizeModelCatalog(rawModels: unknown): ModelOption[] {
+  if (!Array.isArray(rawModels)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const models: ModelOption[] = [];
+  for (const entry of rawModels) {
+    if (!entry || typeof entry !== 'object') continue;
+    const record = entry as Record<string, unknown>;
+    const id = typeof record.id === 'string'
+      ? record.id.trim()
+      : typeof record.model === 'string'
+        ? record.model.trim()
+        : '';
+    if (!id || !validateModel(id) || seen.has(id)) continue;
+    seen.add(id);
+    const label = typeof record.displayName === 'string' && record.displayName.trim()
+      ? record.displayName.trim()
+      : id;
+    models.push({ id, label });
+  }
+
+  return models;
+}
+
+function buildModelPanel(currentModel?: string, catalog?: ModelCatalog): {
+  text: string;
+  inlineButtons: NonNullable<OutboundMessage['inlineButtons']>;
+} {
+  const activeModel = currentModel || '';
+  const resolvedCatalog = catalog ?? {
+    models: MODEL_PANEL_PRESETS.map((model) => ({ ...model })),
+    source: 'fallback' as const,
+  };
+  const text = [
+    '<b>模型选择</b>',
+    '',
+    `当前: <code>${activeModel || 'default'}</code>`,
+    '',
+    resolvedCatalog.source === 'dynamic'
+      ? '当前列表已按本机 Codex CLI 可用模型动态同步。'
+      : '当前显示常用模型预设；未能动态读取 Codex CLI 模型列表。',
+    '点击按钮切换，或发送 /model &lt;模型名称&gt;。',
+    '发送 /model default 可恢复默认模型。',
+    '切换后从下一条消息开始生效。',
+  ];
+
+  const inlineButtons: NonNullable<OutboundMessage['inlineButtons']> = [];
+  inlineButtons.push([
+    {
+      text: activeModel ? '切到 default' : '✅ default',
+      callbackData: MODEL_DEFAULT_CALLBACK,
+    },
+    { text: '刷新状态', callbackData: 'ui:model:status' },
+  ]);
+
+  for (let i = 0; i < resolvedCatalog.models.length; i += 2) {
+    const row: Array<{ text: string; callbackData: string }> = [];
+    const m1 = resolvedCatalog.models[i];
+    row.push({
+      text: (activeModel === m1.id ? '✅ ' : '') + m1.label,
+      callbackData: `ui:model:${m1.id}`,
+    });
+    if (i + 1 < resolvedCatalog.models.length) {
+      const m2 = resolvedCatalog.models[i + 1];
+      row.push({
+        text: (activeModel === m2.id ? '✅ ' : '') + m2.label,
+        callbackData: `ui:model:${m2.id}`,
+      });
+    }
+    inlineButtons.push(row);
+  }
+
+  return { text: text.join('\n'), inlineButtons };
 }
 
 function buildSessionsView(
@@ -1678,4 +2069,4 @@ function truncatePreview(text: string, maxLength: number): string {
 // Exposed so integration tests can exercise handleMessage directly
 // without wiring up the full adapter loop.
 /** @internal */
-export const _testOnly = { handleMessage };
+export const _testOnly = { handleMessage, extractModelCatalogEntries };
