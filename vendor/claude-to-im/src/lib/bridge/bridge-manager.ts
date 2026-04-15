@@ -7,11 +7,14 @@
  * Uses globalThis to survive Next.js HMR in development.
  */
 
+import fs from 'node:fs';
 import { spawn } from 'node:child_process';
+import path from 'node:path';
 import readline from 'node:readline';
 
 import type {
   BridgeStatus,
+  ChannelBinding,
   InboundMessage,
   OutboundMessage,
   PermissionProfile,
@@ -46,6 +49,7 @@ const CWD_INPUT_TTL_MS = 5 * 60 * 1000;
 const KNOWN_SLASH_COMMANDS = new Set([
   '/start',
   '/new',
+  '/import',
   '/resume',
   '/bind',
   '/cwd',
@@ -70,6 +74,15 @@ const MODEL_PANEL_PRESETS = [
 const MODEL_DEFAULT_CALLBACK = 'ui:model:default';
 const MODEL_CATALOG_TTL_MS = 5 * 60 * 1000;
 const MODEL_LIST_TIMEOUT_MS = 5_000;
+const EXTERNAL_CODEX_SCAN_TTL_MS = 60 * 1000;
+const EXTERNAL_CODEX_INDEX_MAX = 500;
+
+interface ExternalCodexSessionSummary {
+  id: string;
+  cwd: string;
+  updatedAt: string;
+  threadName: string;
+}
 
 interface ModelOption {
   id: string;
@@ -83,6 +96,7 @@ interface ModelCatalog {
 
 let modelCatalogCache: { catalog: ModelCatalog; expiresAt: number } | null = null;
 let modelCatalogInflight: Promise<ModelCatalog> | null = null;
+let externalCodexSessionsCache: { sessions: ExternalCodexSessionSummary[]; expiresAt: number } | null = null;
 
 // ── Streaming preview helpers ──────────────────────────────────
 
@@ -914,9 +928,10 @@ async function handleCommand(
         '',
         '<b>常用命令</b>',
         '/new [路径] - 新建会话',
-        '/resume [会话ID] - 恢复会话（默认当前目录最近一条）',
+        '/import &lt;codex_session_id&gt; - 导入 Codex CLI 会话',
+        '/resume [会话ID|external] - 恢复会话（默认当前目录最近一条）',
         '/cwd [路径] - 目录面板或直接切换并新建会话',
-        '/sessions [all] - 查看会话（默认当前目录）',
+        '/sessions [all|external] - 查看会话（默认当前目录）',
         '/mode [plan|code|ask] - 查看或切换模式',
         '/model [模型名称] - 查看或切换模型',
         '/permission [ask|full|status] - 权限模式',
@@ -950,6 +965,47 @@ async function handleCommand(
         '已新建会话。',
         `会话: <code>${binding.codepilotSessionId.slice(0, 8)}...</code>`,
         `目录: <code>${escapeHtml(binding.workingDirectory || '~')}</code>`,
+      ].join('\n');
+      break;
+    }
+
+    case '/import': {
+      const currentBinding = router.resolve(msg.address);
+      const rawCodexSessionId = args.trim();
+      if (!rawCodexSessionId) {
+        response = '用法: /import &lt;codex_session_id&gt;';
+        break;
+      }
+      if (!validateSessionId(rawCodexSessionId)) {
+        response = 'Codex 会话 ID 格式无效，应为 32-64 位 hex/UUID。';
+        break;
+      }
+
+      const st = getState();
+      const currentTask = st.activeTasks.get(currentBinding.codepilotSessionId);
+      if (currentTask) {
+        currentTask.abort();
+        st.activeTasks.delete(currentBinding.codepilotSessionId);
+      }
+
+      const imported = importCodexSessionForAddress(
+        msg.address,
+        rawCodexSessionId,
+        currentBinding,
+      );
+      if (!imported) {
+        response = '导入失败，请稍后重试。';
+        break;
+      }
+
+      const permissionProfile = getPermissionProfile(imported.binding.permissionProfile);
+      response = [
+        imported.reused ? '已绑定已导入会话。' : '已导入 Codex CLI 会话。',
+        `会话: <code>${imported.binding.codepilotSessionId.slice(0, 8)}...</code>`,
+        `Codex: <code>${escapeHtml(rawCodexSessionId)}</code>`,
+        `目录: <code>${escapeHtml(imported.binding.workingDirectory || '~')}</code>`,
+        `模式: <b>${imported.binding.mode}</b>`,
+        `权限: <b>${permissionProfile}</b>`,
       ].join('\n');
       break;
     }
@@ -992,10 +1048,58 @@ async function handleCommand(
           && normalizeWorkingDirectory(session.working_directory) === normalizeWorkingDirectory(currentCwd)
         )) || null;
         if (!targetSession) {
-          response = '当前目录下没有可恢复的历史会话。\n可用 /sessions all 查看其他目录会话。';
+          const external = findLatestExternalCodexSessionByCwd(currentCwd);
+          if (external) {
+            const imported = importCodexSessionForAddress(
+              msg.address,
+              external.id,
+              currentBinding,
+            );
+            if (!imported) {
+              response = '恢复外部会话失败，请稍后重试。';
+              break;
+            }
+            const permissionProfile = getPermissionProfile(imported.binding.permissionProfile);
+            response = [
+              '已恢复外部 Codex CLI 会话。',
+              `会话: <code>${imported.binding.codepilotSessionId.slice(0, 8)}...</code>`,
+              `Codex: <code>${escapeHtml(external.id)}</code>`,
+              `目录: <code>${escapeHtml(imported.binding.workingDirectory || '~')}</code>`,
+              `来源: <i>${escapeHtml(external.threadName || '未命名')}</i>`,
+              `权限: <b>${permissionProfile}</b>`,
+            ].join('\n');
+            break;
+          }
+          response = '当前目录下没有可恢复的历史会话。\n可用 /sessions all 或 /sessions external 查看其他会话。';
           break;
         }
       } else {
+        if (requestedSession === 'external') {
+          const external = findLatestExternalCodexSessionByCwd(currentCwd);
+          if (!external) {
+            response = '当前目录下没有可恢复的外部 Codex CLI 会话。';
+            break;
+          }
+          const imported = importCodexSessionForAddress(
+            msg.address,
+            external.id,
+            currentBinding,
+          );
+          if (!imported) {
+            response = '恢复外部会话失败，请稍后重试。';
+            break;
+          }
+          const permissionProfile = getPermissionProfile(imported.binding.permissionProfile);
+          response = [
+            '已恢复外部 Codex CLI 会话。',
+            `会话: <code>${imported.binding.codepilotSessionId.slice(0, 8)}...</code>`,
+            `Codex: <code>${escapeHtml(external.id)}</code>`,
+            `目录: <code>${escapeHtml(imported.binding.workingDirectory || '~')}</code>`,
+            `来源: <i>${escapeHtml(external.threadName || '未命名')}</i>`,
+            `权限: <b>${permissionProfile}</b>`,
+          ].join('\n');
+          break;
+        }
         const resolved = resolveSessionSelection(allSessions, requestedSession);
         if (resolved.error) {
           response = resolved.error;
@@ -1122,6 +1226,11 @@ async function handleCommand(
     case '/sessions': {
       const currentBinding = router.resolve(msg.address);
       const requestedScope = args.trim().toLowerCase();
+      if (requestedScope === 'external') {
+        const externalView = buildExternalSessionsView(currentBinding.workingDirectory);
+        response = externalView.text;
+        break;
+      }
       const showAll = requestedScope === 'all';
       const view = buildSessionsView(store, currentBinding, showAll);
       response = view.text;
@@ -1196,9 +1305,10 @@ async function handleCommand(
         '<b>命令帮助</b>',
         '',
         '/new [路径] - 新建会话',
-        '/resume [会话ID] - 恢复会话（默认当前目录最近一条）',
+        '/import &lt;codex_session_id&gt; - 导入 Codex CLI 会话',
+        '/resume [会话ID|external] - 恢复会话（默认当前目录最近一条）',
         '/cwd [路径] - 打开目录选择，或直接切换并新建会话',
-        '/sessions [all] - 查看会话（默认当前目录）',
+        '/sessions [all|external] - 查看会话（默认当前目录）',
         '/mode [plan|code|ask] - 查看或切换模式',
         '/model [模型名称] - 查看或切换模型',
         '/permission [ask|full|status] - 查看或切换权限模式',
@@ -2065,8 +2175,264 @@ function truncatePreview(text: string, maxLength: number): string {
   return text.slice(0, Math.max(0, maxLength - 3)).trimEnd() + '...';
 }
 
+function buildExternalSessionsView(currentWorkingDirectory: string): { text: string } {
+  const currentDir = normalizeWorkingDirectory(currentWorkingDirectory);
+  const externalSessions = loadExternalCodexSessions().filter((session) => (
+    normalizeWorkingDirectory(session.cwd) === currentDir
+  ));
+
+  if (externalSessions.length === 0) {
+    return {
+      text: [
+        '<b>外部 Codex CLI 会话</b>',
+        '',
+        `目录: <code>${escapeHtml(currentDir || '~')}</code>`,
+        '当前目录没有发现外部会话。',
+        '可用 /import &lt;codex_session_id&gt; 手动导入。',
+      ].join('\n'),
+    };
+  }
+
+  const lines = [
+    '<b>外部 Codex CLI 会话</b>',
+    '',
+    `目录: <code>${escapeHtml(currentDir || '~')}</code>`,
+    '',
+  ];
+  for (let i = 0; i < Math.min(10, externalSessions.length); i += 1) {
+    const session = externalSessions[i];
+    lines.push(`${i + 1}. <code>${session.id.slice(0, 8)}...</code> ${escapeHtml(session.threadName || '未命名')} (${formatRelativeTimeLabel(session.updatedAt)})`);
+  }
+  lines.push('');
+  lines.push('使用 /resume external 恢复最新一条，或 /import &lt;id&gt; 导入指定会话。');
+
+  return { text: lines.join('\n') };
+}
+
+function findLatestExternalCodexSessionByCwd(currentWorkingDirectory: string): ExternalCodexSessionSummary | null {
+  const currentDir = normalizeWorkingDirectory(currentWorkingDirectory);
+  if (!currentDir) return null;
+  return loadExternalCodexSessions().find((session) => (
+    normalizeWorkingDirectory(session.cwd) === currentDir
+  )) || null;
+}
+
+function loadExternalCodexSessions(): ExternalCodexSessionSummary[] {
+  if (externalCodexSessionsCache && externalCodexSessionsCache.expiresAt > Date.now()) {
+    return externalCodexSessionsCache.sessions;
+  }
+  const sessions = scanExternalCodexSessions();
+  externalCodexSessionsCache = {
+    sessions,
+    expiresAt: Date.now() + EXTERNAL_CODEX_SCAN_TTL_MS,
+  };
+  return sessions;
+}
+
+function scanExternalCodexSessions(): ExternalCodexSessionSummary[] {
+  const codexHome = resolveCodexHome();
+  const indexPath = path.join(codexHome, 'session_index.jsonl');
+  const sessionsRoot = path.join(codexHome, 'sessions');
+  if (!fs.existsSync(indexPath) || !fs.existsSync(sessionsRoot)) {
+    return [];
+  }
+
+  const indexEntries = readExternalCodexIndex(indexPath);
+  if (indexEntries.length === 0) {
+    return [];
+  }
+  const fileMap = buildExternalCodexSessionFileMap(sessionsRoot);
+  const sessions: ExternalCodexSessionSummary[] = [];
+  for (const entry of indexEntries) {
+    const filePath = fileMap.get(entry.id);
+    if (!filePath) continue;
+    const cwd = readExternalCodexSessionCwd(filePath);
+    if (!cwd) continue;
+    sessions.push({
+      id: entry.id,
+      cwd,
+      updatedAt: entry.updatedAt,
+      threadName: entry.threadName,
+    });
+  }
+
+  sessions.sort((a, b) => toEpochMillis(b.updatedAt) - toEpochMillis(a.updatedAt));
+  return sessions;
+}
+
+function readExternalCodexIndex(indexPath: string): Array<{ id: string; updatedAt: string; threadName: string }> {
+  let raw = '';
+  try {
+    raw = fs.readFileSync(indexPath, 'utf-8');
+  } catch {
+    return [];
+  }
+
+  const byId = new Map<string, { id: string; updatedAt: string; threadName: string }>();
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    let record: Record<string, unknown>;
+    try {
+      record = JSON.parse(trimmed) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+
+    const id = typeof record.id === 'string' ? record.id.trim() : '';
+    if (!id || !validateSessionId(id)) continue;
+    const updatedAt = typeof record.updated_at === 'string' ? record.updated_at : '';
+    const threadName = typeof record.thread_name === 'string' ? record.thread_name : '';
+
+    const existing = byId.get(id);
+    if (!existing || toEpochMillis(updatedAt) >= toEpochMillis(existing.updatedAt)) {
+      byId.set(id, { id, updatedAt, threadName });
+    }
+  }
+
+  return Array.from(byId.values())
+    .sort((a, b) => toEpochMillis(b.updatedAt) - toEpochMillis(a.updatedAt))
+    .slice(0, EXTERNAL_CODEX_INDEX_MAX);
+}
+
+function buildExternalCodexSessionFileMap(sessionsRoot: string): Map<string, string> {
+  const fileMap = new Map<string, string>();
+  const stack = [sessionsRoot];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    if (!dir) continue;
+
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+        continue;
+      }
+      if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue;
+      const match = entry.name.match(/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\.jsonl$/i);
+      if (!match) continue;
+      const id = match[1];
+      if (!fileMap.has(id)) {
+        fileMap.set(id, fullPath);
+      }
+    }
+  }
+  return fileMap;
+}
+
+function readExternalCodexSessionCwd(sessionPath: string): string | null {
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(sessionPath, 'r');
+    const buffer = Buffer.alloc(64 * 1024);
+    const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, 0);
+    const header = buffer.toString('utf-8', 0, bytesRead);
+    for (const line of header.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      let record: Record<string, unknown>;
+      try {
+        record = JSON.parse(trimmed) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+
+      if (record.type !== 'session_meta') continue;
+      const payload = (record.payload && typeof record.payload === 'object')
+        ? record.payload as Record<string, unknown>
+        : null;
+      const cwd = typeof payload?.cwd === 'string' ? payload.cwd.trim() : '';
+      return cwd || null;
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    if (fd !== null) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        // ignore
+      }
+    }
+  }
+}
+
+function resolveCodexHome(): string {
+  const fromEnv = process.env.CODEX_HOME?.trim();
+  if (fromEnv) return fromEnv;
+  const home = process.env.HOME?.trim() || '';
+  return home ? path.join(home, '.codex') : '.codex';
+}
+
+function toEpochMillis(raw: string): number {
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatRelativeTimeLabel(updatedAt: string): string {
+  if (!updatedAt) return '时间未知';
+  const ts = toEpochMillis(updatedAt);
+  if (!ts) return '时间未知';
+  return new Date(ts).toLocaleString('zh-CN', { hour12: false });
+}
+
+function importCodexSessionForAddress(
+  address: InboundMessage['address'],
+  codexSessionId: string,
+  currentBinding: ChannelBinding,
+): { binding: ChannelBinding; reused: boolean } | null {
+  const { store } = getBridgeContext();
+  const normalizedCodexSessionId = codexSessionId.trim();
+  const existingImported = store.listSessions().find((session) => (
+    (session.sdk_session_id || '').trim() === normalizedCodexSessionId
+  )) || null;
+
+  if (existingImported) {
+    const rebound = router.bindToSession(address, existingImported.id);
+    if (!rebound) return null;
+    router.updateBinding(rebound.id, {
+      mode: currentBinding.mode,
+      permissionProfile: getPermissionProfile(currentBinding.permissionProfile),
+    });
+    return { binding: router.resolve(address), reused: true };
+  }
+
+  const created = store.createSession(
+    `Bridge Import: ${address.displayName || address.chatId}`,
+    currentBinding.model || '',
+    undefined,
+    currentBinding.workingDirectory || '',
+    currentBinding.mode,
+  );
+  store.updateSdkSessionId(created.id, normalizedCodexSessionId);
+
+  const rebound = router.bindToSession(address, created.id);
+  if (!rebound) return null;
+  router.updateBinding(rebound.id, {
+    mode: currentBinding.mode,
+    permissionProfile: getPermissionProfile(currentBinding.permissionProfile),
+  });
+  return { binding: router.resolve(address), reused: false };
+}
+
 // ── Test-only export ─────────────────────────────────────────
 // Exposed so integration tests can exercise handleMessage directly
 // without wiring up the full adapter loop.
 /** @internal */
-export const _testOnly = { handleMessage, extractModelCatalogEntries };
+export const _testOnly = {
+  handleMessage,
+  extractModelCatalogEntries,
+  resetExternalCodexSessionCache() {
+    externalCodexSessionsCache = null;
+  },
+};

@@ -345,6 +345,7 @@ export class TelegramAdapter extends BaseChannelAdapter {
     await callTelegramApi(token, 'setMyCommands', {
       commands: [
         { command: 'new', description: '新建会话（可选路径）' },
+        { command: 'import', description: '导入外部 Codex CLI 会话' },
         { command: 'resume', description: '恢复会话（默认当前目录最近一条）' },
         { command: 'cwd', description: '打开目录面板或直接切换目录' },
         { command: 'mode', description: '切换模式：plan / code / ask' },

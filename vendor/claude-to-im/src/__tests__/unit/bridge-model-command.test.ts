@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { initBridgeContext } from '../../lib/bridge/context';
@@ -154,7 +157,7 @@ function createAdapter(sentMessages: OutboundMessage[]): BaseChannelAdapter {
   } as unknown as BaseChannelAdapter;
 }
 
-describe('/model command', () => {
+describe('/model and /import command', () => {
   let store: ReturnType<typeof createMockStore>;
   let sentMessages: OutboundMessage[];
 
@@ -232,6 +235,51 @@ describe('/model command', () => {
     assert.ok(sentMessages.some((message) => message.text.includes('当前: <code>gpt-5.4</code>')));
   });
 
+  it('imports an external Codex session and binds the current chat to it', async () => {
+    const { _testOnly } = await import('../../lib/bridge/bridge-manager');
+    const adapter = createAdapter(sentMessages);
+    const original = store.seedBinding('chat-4', { model: 'gpt-5.3-codex', sdkSessionId: 'sdk-old' });
+    const externalSessionId = '019d7833-fadc-7ac1-94e1-dc91a8d37506';
+
+    await _testOnly.handleMessage(adapter, {
+      messageId: 'msg-import-1',
+      address: { channelType: 'telegram', chatId: 'chat-4', userId: 'user-4' },
+      text: `/import ${externalSessionId}`,
+      timestamp: Date.now(),
+    });
+
+    const updated = store.bindings.get('telegram:chat-4');
+    assert.ok(updated);
+    assert.notEqual(updated?.codepilotSessionId, original.codepilotSessionId);
+    assert.equal(updated?.sdkSessionId, externalSessionId);
+    const importedSession = updated ? store.sessions.get(updated.codepilotSessionId) : null;
+    assert.equal(importedSession?.sdk_session_id, externalSessionId);
+    assert.ok(sentMessages.some((message) => message.text.includes('已导入 Codex CLI 会话。')));
+  });
+
+  it('reuses an already imported Codex session when importing the same external id', async () => {
+    const { _testOnly } = await import('../../lib/bridge/bridge-manager');
+    const adapter = createAdapter(sentMessages);
+    const externalSessionId = '019d7833-fadc-7ac1-94e1-dc91a8d37506';
+    const imported = store.createSession('Imported', 'gpt-5.4', undefined, '/tmp/test');
+    store.updateSdkSessionId(imported.id, externalSessionId);
+    store.seedBinding('chat-5', { model: 'gpt-5.3-codex', sdkSessionId: 'sdk-old' });
+    const beforeCount = store.sessions.size;
+
+    await _testOnly.handleMessage(adapter, {
+      messageId: 'msg-import-2',
+      address: { channelType: 'telegram', chatId: 'chat-5', userId: 'user-5' },
+      text: `/import ${externalSessionId}`,
+      timestamp: Date.now(),
+    });
+
+    const updated = store.bindings.get('telegram:chat-5');
+    assert.equal(updated?.codepilotSessionId, imported.id);
+    assert.equal(updated?.sdkSessionId, externalSessionId);
+    assert.equal(store.sessions.size, beforeCount);
+    assert.ok(sentMessages.some((message) => message.text.includes('已绑定已导入会话。')));
+  });
+
   it('accepts Codex app-server model/list responses that use result.data', async () => {
     const { _testOnly } = await import('../../lib/bridge/bridge-manager');
 
@@ -247,4 +295,105 @@ describe('/model command', () => {
       { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
     ]);
   });
+
+  it('falls back to latest external Codex session when /resume has no local history in current cwd', async () => {
+    const { _testOnly } = await import('../../lib/bridge/bridge-manager');
+    const adapter = createAdapter(sentMessages);
+    store.seedBinding('chat-6', { model: 'gpt-5.3-codex', sdkSessionId: 'sdk-old' });
+    const externalSessionId = '019d7833-fadc-7ac1-94e1-dc91a8d37506';
+
+    const oldHome = process.env.HOME;
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cti-ext-home-'));
+    try {
+      process.env.HOME = tempHome;
+      writeExternalCodexSession(tempHome, {
+        id: externalSessionId,
+        cwd: '/tmp/test',
+        threadName: 'External Session',
+        updatedAt: '2026-04-15T15:00:00.000Z',
+      });
+      _testOnly.resetExternalCodexSessionCache();
+
+      await _testOnly.handleMessage(adapter, {
+        messageId: 'msg-resume-external',
+        address: { channelType: 'telegram', chatId: 'chat-6', userId: 'user-6' },
+        text: '/resume',
+        timestamp: Date.now(),
+      });
+    } finally {
+      if (oldHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = oldHome;
+      }
+      _testOnly.resetExternalCodexSessionCache();
+    }
+
+    const updated = store.bindings.get('telegram:chat-6');
+    assert.equal(updated?.sdkSessionId, externalSessionId);
+    assert.ok(sentMessages.some((message) => message.text.includes('已恢复外部 Codex CLI 会话。')));
+  });
+
+  it('shows external Codex sessions for current cwd via /sessions external', async () => {
+    const { _testOnly } = await import('../../lib/bridge/bridge-manager');
+    const adapter = createAdapter(sentMessages);
+    store.seedBinding('chat-7', { model: 'gpt-5.3-codex', sdkSessionId: 'sdk-old' });
+    const externalSessionId = '019d7833-fadc-7ac1-94e1-dc91a8d37506';
+
+    const oldHome = process.env.HOME;
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cti-ext-home-'));
+    try {
+      process.env.HOME = tempHome;
+      writeExternalCodexSession(tempHome, {
+        id: externalSessionId,
+        cwd: '/tmp/test',
+        threadName: 'External Session',
+        updatedAt: '2026-04-15T15:00:00.000Z',
+      });
+      _testOnly.resetExternalCodexSessionCache();
+
+      await _testOnly.handleMessage(adapter, {
+        messageId: 'msg-sessions-external',
+        address: { channelType: 'telegram', chatId: 'chat-7', userId: 'user-7' },
+        text: '/sessions external',
+        timestamp: Date.now(),
+      });
+    } finally {
+      if (oldHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = oldHome;
+      }
+      _testOnly.resetExternalCodexSessionCache();
+    }
+
+    assert.ok(sentMessages.some((message) => message.text.includes('<b>外部 Codex CLI 会话</b>')));
+    assert.ok(sentMessages.some((message) => message.text.includes(`${externalSessionId.slice(0, 8)}...`)));
+  });
 });
+
+function writeExternalCodexSession(
+  tempHome: string,
+  options: { id: string; cwd: string; threadName: string; updatedAt: string },
+): void {
+  const codexHome = path.join(tempHome, '.codex');
+  const indexPath = path.join(codexHome, 'session_index.jsonl');
+  const sessionsDir = path.join(codexHome, 'sessions', '2026', '04', '15');
+  fs.mkdirSync(sessionsDir, { recursive: true });
+  fs.writeFileSync(indexPath, `${JSON.stringify({
+    id: options.id,
+    thread_name: options.threadName,
+    updated_at: options.updatedAt,
+  })}\n`, 'utf-8');
+  const sessionPath = path.join(
+    sessionsDir,
+    `rollout-2026-04-15T00-00-00-${options.id}.jsonl`,
+  );
+  fs.writeFileSync(sessionPath, `${JSON.stringify({
+    type: 'session_meta',
+    payload: {
+      id: options.id,
+      cwd: options.cwd,
+    },
+  })}\n`, 'utf-8');
+}
