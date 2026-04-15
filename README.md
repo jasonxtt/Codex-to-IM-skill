@@ -6,6 +6,8 @@ Bridge Claude Code / Codex to IM platforms — chat with AI coding agents from T
 
 > **Want a desktop GUI instead?** Check out [CodePilot](https://github.com/op7418/CodePilot) — a full-featured desktop app with visual chat interface, session management, file tree preview, permission controls, and more. This skill was extracted from CodePilot's IM bridge module for users who prefer a lightweight, CLI-only setup.
 
+This repository is self-contained. You only need `https://github.com/jasonxtt/Codex-to-IM-skill` to install and run it; no extra `Claude-to-IM` repository is required.
+
 ---
 
 ## How It Works
@@ -93,6 +95,8 @@ bash ~/code/Codex-to-IM-skill/scripts/install-codex.sh --link
 
 The install script places the skill under `~/.codex/skills/codex-to-im`, installs dependencies, and builds the daemon.
 
+`--link` keeps `~/.codex/skills/codex-to-im` as a symlink to your working tree, so edits in your local repo take effect after rebuilds. Without `--link`, the script copies the repo into Codex's skills directory as a standalone install.
+
 After installation, tell Codex:
 
 ```text
@@ -119,6 +123,8 @@ npm run build
 **Claude Code:** Start a new session and type `/` — you should see `codex-to-im` in the skill list. Or ask Claude: "What skills are available?"
 
 **Codex:** Start a new session and say `codex-to-im setup`, `start bridge`, or `帮我接微信桥接`.
+
+No second bridge repository should be cloned anywhere during install. If you see references to `Claude-to-IM`, your local install is stale and should be reinstalled from this repo.
 
 ## Updating the Skill
 

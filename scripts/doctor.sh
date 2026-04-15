@@ -37,33 +37,30 @@ get_config() { grep "^$1=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d= -f2- |
 
 # --- Read runtime setting ---
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-SKILL_PARENT="$(cd "$SKILL_DIR/.." && pwd)"
-UPSTREAM_DIR=""
-for candidate in "$SKILL_PARENT/Codex-to-IM" "$SKILL_PARENT/Claude-to-IM"; do
-  if [ -d "$candidate" ]; then
-    UPSTREAM_DIR="$candidate"
-    break
-  fi
-done
-if [ -z "$UPSTREAM_DIR" ]; then
-  UPSTREAM_DIR="$SKILL_PARENT/Codex-to-IM"
-fi
+VENDOR_DIR="$SKILL_DIR/vendor/claude-to-im"
+INSTALLED_BRIDGE_DIR="$SKILL_DIR/node_modules/claude-to-im"
 CTI_RUNTIME=$(get_config CTI_RUNTIME)
 CTI_RUNTIME="${CTI_RUNTIME:-codex}"
 echo "Runtime: $CTI_RUNTIME"
 echo ""
 
-# --- Upstream bridge repo ---
-if [ -d "$UPSTREAM_DIR/.git" ] || [ -f "$UPSTREAM_DIR/package.json" ]; then
-  check "Upstream bridge repo available ($UPSTREAM_DIR)" 0
+# --- Bundled bridge package ---
+if [ -f "$VENDOR_DIR/package.json" ]; then
+  check "Bundled bridge source exists ($VENDOR_DIR)" 0
 else
-  check "Bridge library repo available (missing $UPSTREAM_DIR; reinstall skill or place the bridge library repo next to the skill)" 1
+  check "Bundled bridge source exists (missing $VENDOR_DIR; reinstall Codex-to-IM-skill)" 1
 fi
 
-if [ -f "$UPSTREAM_DIR/dist/lib/bridge/context.js" ]; then
-  check "Upstream bridge build output exists" 0
+if [ -f "$VENDOR_DIR/dist/lib/bridge/context.js" ]; then
+  check "Bundled bridge build output exists" 0
 else
-  check "Upstream bridge build output exists (run 'cd $UPSTREAM_DIR && npm install')" 1
+  check "Bundled bridge build output exists (run 'cd $SKILL_DIR && npm install')" 1
+fi
+
+if [ -f "$INSTALLED_BRIDGE_DIR/dist/lib/bridge/context.js" ]; then
+  check "Installed bridge dependency is available in node_modules" 0
+else
+  check "Installed bridge dependency is available in node_modules (run 'cd $SKILL_DIR && npm install')" 1
 fi
 
 # --- Claude CLI available (claude/auto modes) ---

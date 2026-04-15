@@ -9,11 +9,7 @@ SKILL_NAME="codex-to-im"
 CODEX_SKILLS_DIR="$HOME/.codex/skills"
 TARGET_DIR="$CODEX_SKILLS_DIR/$SKILL_NAME"
 SOURCE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-UPSTREAM_NAME="Claude-to-IM"
-UPSTREAM_REPO_URL="https://github.com/jasonxtt/Claude-to-IM.git"
-UPSTREAM_DIR="$CODEX_SKILLS_DIR/$UPSTREAM_NAME"
-SOURCE_PARENT_DIR="$(cd "$SOURCE_DIR/.." && pwd)"
-DEV_UPSTREAM_ALIAS="$SOURCE_PARENT_DIR/$UPSTREAM_NAME"
+LINK_MODE="${1:-}"
 
 echo "Installing $SKILL_NAME skill for Codex..."
 
@@ -25,44 +21,6 @@ fi
 
 # Create skills directory
 mkdir -p "$CODEX_SKILLS_DIR"
-
-ensure_upstream_repo() {
-  if [ -d "$UPSTREAM_DIR/.git" ]; then
-    echo "Found upstream bridge repo at: $UPSTREAM_DIR"
-  elif [ -e "$UPSTREAM_DIR" ]; then
-    echo "Error: expected upstream repo path exists but is not a git checkout: $UPSTREAM_DIR"
-    exit 1
-  else
-    echo "Cloning upstream bridge repo..."
-    git clone "$UPSTREAM_REPO_URL" "$UPSTREAM_DIR"
-  fi
-
-  if [ ! -d "$UPSTREAM_DIR/node_modules" ] || [ ! -f "$UPSTREAM_DIR/dist/lib/bridge/context.js" ]; then
-    echo "Installing upstream bridge dependencies..."
-    (cd "$UPSTREAM_DIR" && npm install)
-  fi
-}
-
-ensure_link_mode_upstream_alias() {
-  if [ -e "$DEV_UPSTREAM_ALIAS" ]; then
-    if [ -L "$DEV_UPSTREAM_ALIAS" ] && [ "$(readlink -f "$DEV_UPSTREAM_ALIAS")" = "$UPSTREAM_DIR" ]; then
-      echo "Found development upstream alias: $DEV_UPSTREAM_ALIAS -> $UPSTREAM_DIR"
-      return 0
-    fi
-
-    if [ -d "$DEV_UPSTREAM_ALIAS/.git" ] || [ -f "$DEV_UPSTREAM_ALIAS/package.json" ]; then
-      echo "Found development upstream repo at: $DEV_UPSTREAM_ALIAS"
-      return 0
-    fi
-
-    echo "Error: expected development upstream path exists but is incompatible: $DEV_UPSTREAM_ALIAS"
-    echo "Remove it or replace it with the bridge library repo, then rerun the installer."
-    exit 1
-  fi
-
-  ln -s "$UPSTREAM_DIR" "$DEV_UPSTREAM_ALIAS"
-  echo "Linked development upstream alias: $DEV_UPSTREAM_ALIAS -> $UPSTREAM_DIR"
-}
 
 # Check if already installed
 if [ -e "$TARGET_DIR" ]; then
@@ -78,7 +36,13 @@ if [ -e "$TARGET_DIR" ]; then
   fi
 fi
 
-if [ "${1:-}" = "--link" ]; then
+if [ ! -f "$SOURCE_DIR/vendor/claude-to-im/package.json" ]; then
+  echo "Error: vendored bridge package missing: $SOURCE_DIR/vendor/claude-to-im/package.json"
+  echo "This repo should be self-contained. Re-clone Codex-to-IM-skill and try again."
+  exit 1
+fi
+
+if [ "$LINK_MODE" = "--link" ]; then
   ln -s "$SOURCE_DIR" "$TARGET_DIR"
   echo "Symlinked: $TARGET_DIR → $SOURCE_DIR"
 else
@@ -86,27 +50,18 @@ else
   echo "Copied to: $TARGET_DIR"
 fi
 
-ensure_upstream_repo
-
-if [ "${1:-}" = "--link" ]; then
-  ensure_link_mode_upstream_alias
-fi
-
 # Ensure dependencies (need devDependencies for build step)
-if [ ! -d "$TARGET_DIR/node_modules" ] || [ ! -d "$TARGET_DIR/node_modules/@openai/codex-sdk" ]; then
-  echo "Installing dependencies..."
-  (cd "$TARGET_DIR" && npm install)
-fi
+echo "Installing dependencies..."
+(cd "$TARGET_DIR" && npm install)
 
-# Ensure build
-if [ ! -f "$TARGET_DIR/dist/daemon.mjs" ]; then
-  echo "Building daemon bundle..."
-  (cd "$TARGET_DIR" && npm run build)
-fi
+echo "Building daemon bundle..."
+(cd "$TARGET_DIR" && npm run build)
 
-# Prune devDependencies after build
-echo "Pruning dev dependencies..."
-(cd "$TARGET_DIR" && npm prune --production)
+if [ "$LINK_MODE" = "--link" ]; then
+  echo "Keeping dev dependencies because --link mode is for live development."
+else
+  echo "Keeping build dependencies in place to avoid breaking the vendored bridge package during post-install pruning."
+fi
 
 echo ""
 echo "Done! Start a new Codex session and use:"

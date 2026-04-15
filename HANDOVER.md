@@ -10,9 +10,9 @@
 
 Important distinction:
 
-- This repository is the skill/runtime wrapper.
-- It still depends on the upstream bridge library package `claude-to-im` from the sibling repo `../Claude-to-IM`.
-- Public product naming has been switched to `codex-to-im`, but the internal bridge dependency name was intentionally not renamed to avoid breaking builds.
+- This repository is now self-contained.
+- The bridge core is vendored under `vendor/claude-to-im`.
+- Public product naming is `codex-to-im`, while the internal package name `claude-to-im` is kept only for compatibility with existing imports and package exports.
 
 ## 2. What Was Completed
 
@@ -52,7 +52,7 @@ The skill surface was renamed from `claude-to-im` to `codex-to-im` in the forked
 - User-facing docs
 - Service labels and runtime log prefix
 
-This rename is implemented in the repository, but was not yet redeployed into a fresh local Codex skill install at the time of this handover.
+This rename and self-contained packaging are implemented in the repository.
 
 ## 3. Key Commits
 
@@ -89,10 +89,6 @@ Why `~/.claude-to-im` still exists:
 
 - `/home/tom/github/Codex-to-IM-skill`
 
-### Upstream bridge library repo
-
-- `/home/tom/github/Claude-to-IM`
-
 ### Old persisted runtime data
 
 - `/home/tom/.claude-to-im`
@@ -118,15 +114,12 @@ Why `~/.claude-to-im` still exists:
 These are deliberate and currently acceptable:
 
 - Internal imports still reference the package `claude-to-im`
-- `package.json` still depends on `"claude-to-im": "file:../Claude-to-IM"`
-- The bridge library sibling repo is still named `Claude-to-IM`
+- `package.json` depends on the vendored package at `"file:./vendor/claude-to-im"`
 
 This means:
 
-- `codex-to-im` is now the public skill/runtime name
-- `claude-to-im` remains the internal bridge library dependency name
-
-Do not blindly rename the internal dependency unless the bridge library repo itself is also renamed and its package exports are updated accordingly.
+- `codex-to-im` is the only required GitHub repository
+- `claude-to-im` remains only an internal package name inside this repository
 
 ## 8. Recommended Redeploy Procedure
 
@@ -171,4 +164,4 @@ Migration was not performed automatically in this phase.
 
 - If Codex still does not recognize `codex-to-im`, the issue is likely install/discovery rather than repository code.
 - If the daemon starts but old data is not found, it is likely still reading the new default path `~/.codex-to-im` while the historical data remains in `~/.claude-to-im`.
-- If someone renames the internal `claude-to-im` dependency without changing the sibling library repo, builds will break.
+- If someone renames the internal `claude-to-im` package without updating imports and exports together, builds will break.

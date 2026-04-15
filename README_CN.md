@@ -6,6 +6,8 @@
 
 > **想要桌面图形界面？** 试试 [CodePilot](https://github.com/op7418/CodePilot) —— 一个功能完整的桌面应用，提供可视化聊天界面、会话管理、文件树预览、权限控制等。本 Skill 从 CodePilot 的 IM 桥接模块中提取而来，适合偏好轻量级纯 CLI 方案的用户。
 
+这个仓库现在是自包含的。安装和运行只需要 `https://github.com/jasonxtt/Codex-to-IM-skill` 这一份仓库，不再依赖额外的 `Claude-to-IM` 仓库。
+
 ---
 
 ## 工作原理
@@ -93,6 +95,8 @@ bash ~/code/Codex-to-IM-skill/scripts/install-codex.sh --link
 
 安装脚本会把 Skill 放到 `~/.codex/skills/codex-to-im`，并自动安装依赖、构建 daemon。
 
+`--link` 表示把 `~/.codex/skills/codex-to-im` 做成指向你本地工作目录的符号链接，适合开发调试。不给 `--link` 时，安装脚本会复制一份独立副本到 Codex skills 目录。
+
 安装完成后，直接对 Codex 说：
 
 ```text
@@ -119,6 +123,8 @@ npm run build
 **Claude Code：** 启动新会话，输入 `/` 应能看到 `codex-to-im`。也可以直接问 Claude："What skills are available?"
 
 **Codex：** 启动新会话，说 `codex-to-im setup`、`start bridge` 或 `帮我接微信桥接`。
+
+正常安装过程中不应该再克隆第二个桥接仓库。如果你仍看到 `Claude-to-IM` 相关路径，说明本地安装还是旧版本，需要用本仓库重新安装。
 
 ## 更新 Skill
 
