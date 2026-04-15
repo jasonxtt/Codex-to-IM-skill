@@ -2217,6 +2217,12 @@ function findLatestExternalCodexSessionByCwd(currentWorkingDirectory: string): E
   )) || null;
 }
 
+function findExternalCodexSessionById(codexSessionId: string): ExternalCodexSessionSummary | null {
+  const normalizedId = codexSessionId.trim();
+  if (!normalizedId) return null;
+  return loadExternalCodexSessions().find((session) => session.id === normalizedId) || null;
+}
+
 function loadExternalCodexSessions(): ExternalCodexSessionSummary[] {
   if (externalCodexSessionsCache && externalCodexSessionsCache.expiresAt > Date.now()) {
     return externalCodexSessionsCache.sessions;
@@ -2367,6 +2373,29 @@ function readExternalCodexSessionCwd(sessionPath: string): string | null {
   }
 }
 
+function findExternalCodexSessionCwdById(codexSessionId: string): string | null {
+  const normalizedId = codexSessionId.trim();
+  if (!normalizedId) return null;
+
+  const fromCatalog = findExternalCodexSessionById(normalizedId);
+  if (fromCatalog?.cwd) {
+    return fromCatalog.cwd;
+  }
+
+  const codexHome = resolveCodexHome();
+  const sessionsRoot = path.join(codexHome, 'sessions');
+  if (!fs.existsSync(sessionsRoot)) {
+    return null;
+  }
+
+  const sessionFiles = buildExternalCodexSessionFileMap(sessionsRoot);
+  const sessionPath = sessionFiles.get(normalizedId);
+  if (!sessionPath) {
+    return null;
+  }
+  return readExternalCodexSessionCwd(sessionPath);
+}
+
 function resolveCodexHome(): string {
   const fromEnv = process.env.CODEX_HOME?.trim();
   if (fromEnv) return fromEnv;
@@ -2393,11 +2422,19 @@ function importCodexSessionForAddress(
 ): { binding: ChannelBinding; reused: boolean } | null {
   const { store } = getBridgeContext();
   const normalizedCodexSessionId = codexSessionId.trim();
+  const importedCwd = findExternalCodexSessionCwdById(normalizedCodexSessionId);
+  const targetWorkingDirectory = normalizeWorkingDirectory(importedCwd || currentBinding.workingDirectory || '');
   const existingImported = store.listSessions().find((session) => (
     (session.sdk_session_id || '').trim() === normalizedCodexSessionId
   )) || null;
 
   if (existingImported) {
+    if (
+      targetWorkingDirectory
+      && normalizeWorkingDirectory(existingImported.working_directory) !== targetWorkingDirectory
+    ) {
+      store.updateSessionWorkingDirectory(existingImported.id, targetWorkingDirectory);
+    }
     const rebound = router.bindToSession(address, existingImported.id);
     if (!rebound) return null;
     router.updateBinding(rebound.id, {
@@ -2411,7 +2448,7 @@ function importCodexSessionForAddress(
     `Bridge Import: ${address.displayName || address.chatId}`,
     currentBinding.model || '',
     undefined,
-    currentBinding.workingDirectory || '',
+    targetWorkingDirectory,
     currentBinding.mode,
   );
   store.updateSdkSessionId(created.id, normalizedCodexSessionId);

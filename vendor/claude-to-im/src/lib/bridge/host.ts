@@ -170,6 +170,7 @@ export interface BridgeStore {
     mode?: string,
   ): BridgeSession;
   updateSessionProviderId(sessionId: string, providerId: string): void;
+  updateSessionWorkingDirectory(sessionId: string, workingDirectory: string): void;
 
   // ── Messages ──
   addMessage(sessionId: string, role: string, content: string, usage?: string | null): void;

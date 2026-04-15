@@ -91,6 +91,17 @@ class InMemoryStore implements BridgeStore {
   }
 
   updateSessionProviderId() {}
+  updateSessionWorkingDirectory(sessionId: string, workingDirectory: string) {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.working_directory = workingDirectory;
+    }
+    for (const [key, binding] of this.bindings) {
+      if (binding.codepilotSessionId === sessionId) {
+        this.bindings.set(key, { ...binding, workingDirectory });
+      }
+    }
+  }
   addMessage(sessionId: string, role: string, content: string) {
     const msgs = this.messages.get(sessionId) || [];
     msgs.push({ role, content });

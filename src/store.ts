@@ -304,6 +304,24 @@ export class JsonFileStore implements BridgeStore {
     }
   }
 
+  updateSessionWorkingDirectory(sessionId: string, workingDirectory: string): void {
+    const normalized = workingDirectory.trim();
+    if (!normalized) return;
+
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.working_directory = normalized;
+      this.persistSessions();
+    }
+
+    for (const [key, binding] of this.bindings) {
+      if (binding.codepilotSessionId === sessionId) {
+        this.bindings.set(key, { ...binding, workingDirectory: normalized, updatedAt: now() });
+      }
+    }
+    this.persistBindings();
+  }
+
   // ── Messages ──
 
   addMessage(sessionId: string, role: string, content: string, _usage?: string | null): void {

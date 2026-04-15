@@ -78,6 +78,17 @@ function createMockStore(): BridgeStore & { bindings: Map<string, ChannelBinding
       return session;
     },
     updateSessionProviderId() {},
+    updateSessionWorkingDirectory(sessionId: string, workingDirectory: string) {
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.working_directory = workingDirectory;
+      }
+      for (const [key, binding] of bindings) {
+        if (binding.codepilotSessionId === sessionId) {
+          bindings.set(key, { ...binding, workingDirectory });
+        }
+      }
+    },
     addMessage() {},
     getMessages() { return { messages: [] }; },
     acquireSessionLock() { return true; },

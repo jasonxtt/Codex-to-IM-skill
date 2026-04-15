@@ -83,6 +83,19 @@ function createMockStore(): BridgeStore & {
       return session;
     },
     updateSessionProviderId() {},
+    updateSessionWorkingDirectory(sessionId: string, workingDirectory: string) {
+      const normalized = workingDirectory.trim();
+      if (!normalized) return;
+      const session = sessions.get(sessionId);
+      if (session) {
+        session.working_directory = normalized;
+      }
+      for (const [key, binding] of bindings) {
+        if (binding.codepilotSessionId === sessionId) {
+          bindings.set(key, { ...binding, workingDirectory: normalized });
+        }
+      }
+    },
     addMessage() {},
     getMessages() { return { messages: [] }; },
     acquireSessionLock() { return true; },
@@ -255,6 +268,45 @@ describe('/model and /import command', () => {
     const importedSession = updated ? store.sessions.get(updated.codepilotSessionId) : null;
     assert.equal(importedSession?.sdk_session_id, externalSessionId);
     assert.ok(sentMessages.some((message) => message.text.includes('已导入 Codex CLI 会话。')));
+  });
+
+  it('imports external session cwd when metadata exists', async () => {
+    const { _testOnly } = await import('../../lib/bridge/bridge-manager');
+    const adapter = createAdapter(sentMessages);
+    store.seedBinding('chat-4b', { model: 'gpt-5.3-codex', sdkSessionId: 'sdk-old' });
+    const externalSessionId = '019d7833-fadc-7ac1-94e1-dc91a8d37507';
+
+    const oldHome = process.env.HOME;
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cti-ext-home-'));
+    try {
+      process.env.HOME = tempHome;
+      writeExternalCodexSession(tempHome, {
+        id: externalSessionId,
+        cwd: '/tmp/imported-workdir',
+        threadName: 'Imported Session',
+        updatedAt: '2026-04-15T16:00:00.000Z',
+      });
+      _testOnly.resetExternalCodexSessionCache();
+
+      await _testOnly.handleMessage(adapter, {
+        messageId: 'msg-import-cwd',
+        address: { channelType: 'telegram', chatId: 'chat-4b', userId: 'user-4b' },
+        text: `/import ${externalSessionId}`,
+        timestamp: Date.now(),
+      });
+    } finally {
+      if (oldHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = oldHome;
+      }
+      _testOnly.resetExternalCodexSessionCache();
+    }
+
+    const updated = store.bindings.get('telegram:chat-4b');
+    const importedSession = updated ? store.sessions.get(updated.codepilotSessionId) : null;
+    assert.equal(updated?.workingDirectory, '/tmp/imported-workdir');
+    assert.equal(importedSession?.working_directory, '/tmp/imported-workdir');
   });
 
   it('reuses an already imported Codex session when importing the same external id', async () => {

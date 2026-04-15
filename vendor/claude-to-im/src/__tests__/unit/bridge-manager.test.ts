@@ -144,6 +144,7 @@ function createMinimalStore(settings: Record<string, string> = {}): BridgeStore 
     listSessions: () => [],
     createSession: () => ({ id: '1', working_directory: '', model: '' }),
     updateSessionProviderId: () => {},
+    updateSessionWorkingDirectory: () => {},
     addMessage: () => {},
     getMessages: () => ({ messages: [] }),
     acquireSessionLock: () => true,

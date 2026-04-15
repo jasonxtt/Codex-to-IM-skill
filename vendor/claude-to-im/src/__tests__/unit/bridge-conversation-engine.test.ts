@@ -33,6 +33,7 @@ function createMockStore(settings: Record<string, string> = {}): BridgeStore {
     listSessions: () => Array.from(sessions.values()),
     createSession: () => ({ id: 'new-session', working_directory: '', model: '' }),
     updateSessionProviderId: () => {},
+    updateSessionWorkingDirectory: () => {},
     addMessage: (sessionId: string, role: string, content: string) => {
       const current = messages.get(sessionId) ?? [];
       current.push({ role, content });
