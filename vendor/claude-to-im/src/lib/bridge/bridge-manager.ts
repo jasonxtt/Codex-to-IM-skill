@@ -1008,13 +1008,22 @@ async function handleCommand(
     }
 
     case '/mode': {
-      if (!validateMode(args)) {
-        response = '用法: /mode plan|code|ask';
+      const binding = router.resolve(msg.address);
+      const requestedMode = args.trim().toLowerCase();
+      if (!requestedMode) {
+        const panel = buildModePanel(binding.mode);
+        response = panel.text;
+        responseButtons = panel.inlineButtons;
         break;
       }
-      const binding = router.resolve(msg.address);
-      router.updateBinding(binding.id, { mode: args });
-      response = `模式已切换为 <b>${args}</b>`;
+      if (!validateMode(requestedMode)) {
+        response = '用法: /mode [plan|code|ask]';
+        break;
+      }
+      router.updateBinding(binding.id, { mode: requestedMode });
+      const panel = buildModePanel(requestedMode);
+      response = panel.text;
+      responseButtons = panel.inlineButtons;
       break;
     }
 
@@ -1041,9 +1050,10 @@ async function handleCommand(
       responseButtons = [
         [
           { text: '查看当前目录会话', callbackData: 'ui:sessions:cwd' },
-          { text: '权限设置', callbackData: 'ui:permission:menu' },
+          { text: '模式设置', callbackData: 'ui:mode:menu' },
         ],
         [
+          { text: '权限设置', callbackData: 'ui:permission:menu' },
           { text: '切换目录', callbackData: 'ui:cwd:menu' },
         ],
       ];
@@ -1131,7 +1141,7 @@ async function handleCommand(
         '/cwd [路径] - 打开目录选择，或直接切换并新建会话',
         '/sessions [all] - 查看会话（默认当前目录）',
         '/permission [ask|full|status] - 查看或切换权限模式',
-        '/mode plan|code|ask - 切换模式',
+        '/mode [plan|code|ask] - 查看或切换模式',
         '/status - 查看当前状态',
         '/stop - 停止当前任务',
         '/perm allow|allow_session|deny &lt;id&gt; - 处理权限请求',
@@ -1296,6 +1306,39 @@ async function handleUiCallback(
     return true;
   }
 
+  if (callbackData === 'ui:mode:menu' || callbackData === 'ui:mode:status') {
+    const binding = router.resolve(msg.address);
+    const panel = buildModePanel(binding.mode);
+    await deliver(adapter, {
+      address: msg.address,
+      text: panel.text,
+      parseMode: 'HTML',
+      inlineButtons: panel.inlineButtons,
+      replyToMessageId,
+    });
+    return true;
+  }
+
+  if (
+    callbackData === 'ui:mode:plan'
+    || callbackData === 'ui:mode:code'
+    || callbackData === 'ui:mode:ask'
+  ) {
+    const binding = router.resolve(msg.address);
+    const nextMode = callbackData.slice('ui:mode:'.length);
+    if (!validateMode(nextMode)) return false;
+    router.updateBinding(binding.id, { mode: nextMode });
+    const panel = buildModePanel(nextMode);
+    await deliver(adapter, {
+      address: msg.address,
+      text: panel.text,
+      parseMode: 'HTML',
+      inlineButtons: panel.inlineButtons,
+      replyToMessageId,
+    });
+    return true;
+  }
+
   return false;
 }
 
@@ -1355,6 +1398,40 @@ function buildPermissionPanel(profile: PermissionProfile): {
     ],
     [
       { text: '刷新状态', callbackData: 'ui:permission:status' },
+    ],
+  ];
+  return { text, inlineButtons };
+}
+
+function buildModePanel(mode: 'plan' | 'code' | 'ask'): {
+  text: string;
+  inlineButtons: NonNullable<OutboundMessage['inlineButtons']>;
+} {
+  const text = [
+    '<b>会话模式</b>',
+    '',
+    `当前: <b>${mode}</b>`,
+    'code: 默认编码执行',
+    'plan: 先给方案再改动',
+    'ask: 更保守，关键操作前倾向询问',
+  ].join('\n');
+  const inlineButtons: NonNullable<OutboundMessage['inlineButtons']> = [
+    [
+      {
+        text: mode === 'plan' ? '✅ plan' : '切到 plan',
+        callbackData: 'ui:mode:plan',
+      },
+      {
+        text: mode === 'code' ? '✅ code' : '切到 code',
+        callbackData: 'ui:mode:code',
+      },
+    ],
+    [
+      {
+        text: mode === 'ask' ? '✅ ask' : '切到 ask',
+        callbackData: 'ui:mode:ask',
+      },
+      { text: '刷新状态', callbackData: 'ui:mode:status' },
     ],
   ];
   return { text, inlineButtons };

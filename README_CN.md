@@ -1,25 +1,23 @@
 # Codex-to-IM Skill
 
-将 Claude Code / Codex 桥接到 IM 平台 —— 在 Telegram、Discord、飞书、QQ 或微信中与 AI 编程代理对话。
+将 Codex / Claude Code 桥接到 IM 平台 —— 在 Telegram、Discord、飞书、QQ 或微信中与 AI 编程代理对话。
 
 [English](README.md)
 
 > **想要桌面图形界面？** 试试 [CodePilot](https://github.com/op7418/CodePilot) —— 一个功能完整的桌面应用，提供可视化聊天界面、会话管理、文件树预览、权限控制等。本 Skill 从 CodePilot 的 IM 桥接模块中提取而来，适合偏好轻量级纯 CLI 方案的用户。
 
-这个仓库现在是自包含的。安装和运行只需要 `https://github.com/jasonxtt/Codex-to-IM-skill` 这一份仓库，不再依赖额外的 `Claude-to-IM` 仓库。
-
 ---
 
 ## 工作原理
 
-本 Skill 运行一个后台守护进程，将你的 IM 机器人连接到 Claude Code 或 Codex 会话。来自 IM 的消息被转发给 AI 编程代理，响应（包括工具调用、权限请求、流式预览）会发回到聊天中。
+本 Skill 运行一个后台守护进程，将你的 IM 机器人连接到 Codex 或 Claude Code 会话。来自 IM 的消息被转发给 AI 编程代理，响应（包括工具调用、权限请求、流式预览）会发回到聊天中。
 
 ```
 你 (Telegram/Discord/飞书/QQ/微信)
   ↕ Bot API
 后台守护进程 (Node.js)
   ↕ Claude Agent SDK 或 Codex SDK（通过 CTI_RUNTIME 配置）
-Claude Code / Codex → 读写你的代码库
+ Codex  / Claude Code → 读写你的代码库
 ```
 
 ## 功能特点
@@ -41,6 +39,52 @@ Claude Code / Codex → 读写你的代码库
 ## 安装
 
 请先按你实际使用的 AI Agent 产品选择对应安装方式。
+
+### Codex
+
+#### 推荐：使用 Codex 安装脚本
+
+```bash
+git clone https://github.com/jasonxtt/Codex-to-IM-skill.git ~/code/Codex-to-IM-skill
+bash ~/code/Codex-to-IM-skill/scripts/install-codex.sh
+```
+
+如果你想保留可开发的本地仓库：
+
+```bash
+bash ~/code/Codex-to-IM-skill/scripts/install-codex.sh --link
+```
+
+安装脚本会把 Skill 放到 `~/.codex/skills/codex-to-im`，并自动安装依赖、构建 daemon。
+
+`--link` 表示把 `~/.codex/skills/codex-to-im` 做成指向你本地工作目录的符号链接，适合开发调试。不给 `--link` 时，安装脚本会复制一份独立副本到 Codex skills 目录。
+
+安装完成后，直接对 Codex 说：
+
+```text
+codex-to-im setup
+```
+或
+```text
+codex-to-im setup ，用中文回答
+```
+具体配置查看 [快速开始](#快速开始)
+
+如果你主要想接微信，也可以直接说：
+
+```text
+帮我接微信桥接
+```
+
+#### 备选：直接克隆到 Codex skills 目录
+
+```bash
+git clone https://github.com/jasonxtt/Codex-to-IM-skill.git ~/.codex/skills/codex-to-im
+cd ~/.codex/skills/codex-to-im
+npm install
+npm run build
+```
+
 
 ### Claude Code
 
@@ -78,45 +122,6 @@ mkdir -p ~/.claude/skills
 ln -s ~/code/Codex-to-IM-skill ~/.claude/skills/codex-to-im
 ```
 
-### Codex
-
-#### 推荐：使用 Codex 安装脚本
-
-```bash
-git clone https://github.com/jasonxtt/Codex-to-IM-skill.git ~/code/Codex-to-IM-skill
-bash ~/code/Codex-to-IM-skill/scripts/install-codex.sh
-```
-
-如果你想保留可开发的本地仓库：
-
-```bash
-bash ~/code/Codex-to-IM-skill/scripts/install-codex.sh --link
-```
-
-安装脚本会把 Skill 放到 `~/.codex/skills/codex-to-im`，并自动安装依赖、构建 daemon。
-
-`--link` 表示把 `~/.codex/skills/codex-to-im` 做成指向你本地工作目录的符号链接，适合开发调试。不给 `--link` 时，安装脚本会复制一份独立副本到 Codex skills 目录。
-
-安装完成后，直接对 Codex 说：
-
-```text
-codex-to-im setup
-```
-
-如果你主要想接微信，也可以直接说：
-
-```text
-帮我接微信桥接
-```
-
-#### 备选：直接克隆到 Codex skills 目录
-
-```bash
-git clone https://github.com/jasonxtt/Codex-to-IM-skill.git ~/.codex/skills/codex-to-im
-cd ~/.codex/skills/codex-to-im
-npm install
-npm run build
-```
 
 ### 验证安装
 
@@ -129,30 +134,6 @@ npm run build
 ## 更新 Skill
 
 请按你的 AI Agent 产品和安装方式选择对应的更新方式。
-
-### Claude Code
-
-如果你是通过 `npx skills` 安装的，直接重新执行：
-
-```bash
-npx skills add jasonxtt/Codex-to-IM-skill
-```
-
-如果你是通过 `git clone` 或符号链接安装的：
-
-```bash
-cd ~/.claude/skills/codex-to-im
-git pull
-npm install
-npm run build
-```
-
-更新完成后，对 Claude Code 说：
-
-```text
-/codex-to-im doctor
-/codex-to-im start
-```
 
 ### Codex
 
@@ -179,20 +160,46 @@ codex-to-im doctor
 start bridge
 ```
 
+### Claude Code
+
+如果你是通过 `npx skills` 安装的，直接重新执行：
+
+```bash
+npx skills add jasonxtt/Codex-to-IM-skill
+```
+
+如果你是通过 `git clone` 或符号链接安装的：
+
+```bash
+cd ~/.claude/skills/codex-to-im
+git pull
+npm install
+npm run build
+```
+
+更新完成后，对 Claude Code 说：
+
+```text
+/codex-to-im doctor
+/codex-to-im start
+```
+
+
+
 ## 快速开始
 
 ### 1. 配置
-
-**Claude Code**
-
-```text
-/codex-to-im setup
-```
 
 **Codex**
 
 ```text
 codex-to-im setup
+```
+
+**Claude Code**
+
+```text
+/codex-to-im setup
 ```
 
 向导会引导你完成以下步骤：
@@ -204,29 +211,29 @@ codex-to-im setup
 
 ### 2. 启动
 
-**Claude Code**
-
-```text
-/codex-to-im start
-```
-
 **Codex**
 
 ```text
 start bridge
 ```
 
+**Claude Code**
+
+```text
+/codex-to-im start
+```
+
 守护进程在后台启动。关闭终端后仍会继续运行。
 
 ### 3. 开始聊天
 
-打开 IM 应用，给你的机器人发消息，Claude Code / Codex 会通过桥接回复。
+打开 IM 应用，给你的机器人发消息，Codex / Claude Code 会通过桥接回复。
 
-当 Claude 需要使用工具（编辑文件、运行命令）时，聊天中会弹出带有 **允许** / **拒绝** 按钮的权限请求（Telegram/Discord），或文本 `/perm` 命令提示 / 快捷 `1/2/3` 回复（飞书/QQ/微信）。
+当 Codex / Claude 需要使用工具（编辑文件、运行命令）时，聊天中会弹出带有 **允许** / **拒绝** 按钮的权限请求（Telegram/Discord），或文本 `/perm` 命令提示 / 快捷 `1/2/3` 回复（飞书/QQ/微信）。
 
 ## 命令列表
 
-所有命令在 Claude Code 或 Codex 中执行：
+### Codex / Claude Code 中命令：
 
 | Claude Code | Codex（自然语言） | 说明 |
 |---|---|---|
@@ -239,6 +246,24 @@ start bridge
 | `/codex-to-im reconfigure` | "reconfigure" / "修改配置" | 交互式修改配置 |
 | `/codex-to-im doctor` | "doctor" / "诊断" | 诊断问题 |
 
+### Telegram 对话内命令
+
+下面这些是桥接后的 Telegram 聊天内命令，更接近 Codex CLI 的会话操作：
+
+| 命令 | 说明 |
+|---|---|
+| `/new` | 新建会话 |
+| `/resume` | 恢复最近一次会话 |
+| `/sessions` | 查看可恢复会话列表，并可直接点按钮恢复 |
+| `/cwd` | 切换工作目录，支持最近目录按钮和手动输入 |
+| `/mode` | 打开模式面板，支持按钮切换 `plan/code/ask` |
+| `/mode plan`、`/mode code`、`/mode ask` | 切换会话模式 |
+| `/permission` | 打开权限面板 |
+| `/permission ask` | 当前会话切到 ask |
+| `/permission full` | 当前会话切到 full |
+| `/permission status` | 查看当前会话权限状态 |
+| `/status` | 查看当前会话、目录、权限等状态 |
+
 ### Codex 运行时权限配置
 
 当 `CTI_RUNTIME=codex` 时，以下环境变量控制沙箱权限：
@@ -250,6 +275,27 @@ start bridge
 | `CTI_CODEX_NETWORK_ACCESS` | `true`, `false` | `false` | 中等 |
 | `CTI_CODEX_ADDITIONAL_DIRECTORIES` | 逗号分隔的绝对路径 | (无) | 中等 |
 
+这些变量是 daemon 级默认值，但不是唯一权限来源。
+
+当前实现里还有一层 Telegram 会话级权限配置：
+
+- `/permission ask` 等价于当前会话强制使用 `approvalPolicy=on-request` + `sandboxMode=workspace-write`
+- `/permission full` 等价于当前会话强制使用 `approvalPolicy=never` + `sandboxMode=danger-full-access`
+- 也就是说，会话内 `/permission` 的优先级高于全局 `CTI_CODEX_*` 默认值
+- 如果当前会话没有显式 `/permission` 覆盖，才会回落到 `CTI_CODEX_*` 或更底层的 mode 推导逻辑
+
+实际优先级可以理解为：
+
+1. 当前会话的 `/permission` 配置
+2. `CTI_CODEX_APPROVAL_POLICY` / `CTI_CODEX_SANDBOX_MODE` 等全局配置
+3. 由运行模式推导出的默认审批策略
+
+另外要注意：
+
+- `CTI_DEFAULT_MODE=code` 不等于 full access
+- 当前补丁里，新建会话默认权限仍然是 `ask`
+- 只有手动执行 `/permission full` 后，当前会话才进入 full 权限
+
 #### 推荐安全配置
 
 ```env
@@ -258,6 +304,8 @@ CTI_CODEX_SANDBOX_MODE=workspace-write
 CTI_CODEX_APPROVAL_POLICY=on-request
 CTI_CODEX_NETWORK_ACCESS=false
 ```
+
+这组配置与 `/permission ask` 的实际行为是一致的。
 
 #### ⚠️ 危险区域
 
@@ -268,6 +316,8 @@ CTI_CODEX_SANDBOX_MODE=danger-full-access
 CTI_CODEX_APPROVAL_POLICY=never
 CTI_CODEX_NETWORK_ACCESS=true
 ```
+
+这组配置与 `/permission full` 的实际行为是一致的。
 
 ## 平台配置指南
 
