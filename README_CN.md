@@ -252,16 +252,25 @@ start bridge
 
 | 命令 | 说明 |
 |---|---|
-| `/new` | 新建会话 |
-| `/resume` | 恢复最近一次会话 |
-| `/sessions` | 查看可恢复会话列表，并可直接点按钮恢复 |
+| `/new [路径]` | 新建会话（可选绝对路径） |
+| `/import <codex_session_id>` | 导入/绑定 Codex CLI 会话 |
+| `/resume` | 恢复当前目录最近会话（若本地无历史则回退到当前目录最新外部会话） |
+| `/resume <id或前缀>` | 按会话 ID 恢复（支持本地桥接会话 ID 和 Codex CLI 会话 ID） |
+| `/resume external` | 恢复当前目录最新外部 Codex CLI 会话 |
+| `/sessions` | 查看当前目录本地可恢复会话，并可直接按钮恢复 |
+| `/sessions all` | 查看全部目录本地可恢复会话 |
+| `/sessions external` | 查看当前目录外部 Codex CLI 会话，并可直接按钮恢复 |
+| `/sessions external all` | 查看全部目录外部 Codex CLI 会话（显示目录 + 直接恢复按钮） |
 | `/cwd` | 切换工作目录，支持最近目录按钮和手动输入 |
 | `/mode` | 打开模式面板，支持按钮切换 `plan/code/ask` |
 | `/mode plan`、`/mode code`、`/mode ask` | 切换会话模式 |
+| `/model` | 打开模型面板，支持按钮切换模型 |
+| `/model <模型名>` | 切换当前会话模型，`/model default` 恢复默认模型 |
 | `/permission` | 打开权限面板 |
 | `/permission ask` | 当前会话切到 ask |
 | `/permission full` | 当前会话切到 full |
 | `/permission status` | 查看当前会话权限状态 |
+| `/stop` | 停止当前任务 |
 | `/status` | 查看当前会话、目录、权限等状态 |
 
 ### Codex 运行时权限配置

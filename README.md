@@ -239,6 +239,28 @@ All commands are run inside Claude Code or Codex:
 | `/codex-to-im reconfigure` | "reconfigure" / "修改配置" | Update config interactively |
 | `/codex-to-im doctor` | "doctor" / "诊断" | Diagnose issues |
 
+### Telegram In-Chat Commands
+
+These commands are used inside Telegram after the bridge is running:
+
+| Command | Description |
+|---|---|
+| `/new [path]` | Create a new bridge session (optional absolute path) |
+| `/import <codex_session_id>` | Import/bind a Codex CLI session |
+| `/resume` | Resume latest session in current directory (fallback to latest external session in this directory) |
+| `/resume <id_or_prefix>` | Resume by session ID/prefix (supports local bridge session IDs and Codex CLI session IDs) |
+| `/resume external` | Resume latest external Codex CLI session in current directory |
+| `/sessions` | Show local recoverable sessions for current directory |
+| `/sessions all` | Show local recoverable sessions across directories |
+| `/sessions external` | Show external Codex CLI sessions for current directory |
+| `/sessions external all` | Show external Codex CLI sessions across directories, with one-click resume buttons |
+| `/cwd [path]` | Open directory chooser or switch directory directly |
+| `/mode [plan|code|ask]` | Show or switch mode |
+| `/model [name|default]` | Show or switch model |
+| `/permission [ask|full|status]` | Show or switch permission profile |
+| `/status` | Show current session status (session, cwd, mode, permission, model) |
+| `/stop` | Stop the current running task |
+
 ### Codex Runtime Permissions
 
 When `CTI_RUNTIME=codex`, the following environment variables control sandbox permissions:
