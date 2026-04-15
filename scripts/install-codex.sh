@@ -12,6 +12,8 @@ SOURCE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 UPSTREAM_NAME="Claude-to-IM"
 UPSTREAM_REPO_URL="https://github.com/op7418/Claude-to-IM.git"
 UPSTREAM_DIR="$CODEX_SKILLS_DIR/$UPSTREAM_NAME"
+SOURCE_PARENT_DIR="$(cd "$SOURCE_DIR/.." && pwd)"
+DEV_UPSTREAM_ALIAS="$SOURCE_PARENT_DIR/$UPSTREAM_NAME"
 
 echo "Installing $SKILL_NAME skill for Codex..."
 
@@ -41,6 +43,27 @@ ensure_upstream_repo() {
   fi
 }
 
+ensure_link_mode_upstream_alias() {
+  if [ -e "$DEV_UPSTREAM_ALIAS" ]; then
+    if [ -L "$DEV_UPSTREAM_ALIAS" ] && [ "$(readlink -f "$DEV_UPSTREAM_ALIAS")" = "$UPSTREAM_DIR" ]; then
+      echo "Found development upstream alias: $DEV_UPSTREAM_ALIAS -> $UPSTREAM_DIR"
+      return 0
+    fi
+
+    if [ -d "$DEV_UPSTREAM_ALIAS/.git" ] || [ -f "$DEV_UPSTREAM_ALIAS/package.json" ]; then
+      echo "Found development upstream repo at: $DEV_UPSTREAM_ALIAS"
+      return 0
+    fi
+
+    echo "Error: expected development upstream path exists but is incompatible: $DEV_UPSTREAM_ALIAS"
+    echo "Remove it or replace it with the bridge library repo, then rerun the installer."
+    exit 1
+  fi
+
+  ln -s "$UPSTREAM_DIR" "$DEV_UPSTREAM_ALIAS"
+  echo "Linked development upstream alias: $DEV_UPSTREAM_ALIAS -> $UPSTREAM_DIR"
+}
+
 # Check if already installed
 if [ -e "$TARGET_DIR" ]; then
   if [ -L "$TARGET_DIR" ]; then
@@ -64,6 +87,10 @@ else
 fi
 
 ensure_upstream_repo
+
+if [ "${1:-}" = "--link" ]; then
+  ensure_link_mode_upstream_alias
+fi
 
 # Ensure dependencies (need devDependencies for build step)
 if [ ! -d "$TARGET_DIR/node_modules" ] || [ ! -d "$TARGET_DIR/node_modules/@openai/codex-sdk" ]; then
