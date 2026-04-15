@@ -785,6 +785,85 @@ describe('CodexProvider', () => {
     }
   });
 
+  it('retries with skipGitRepoCheck when Codex rejects an untrusted working directory', async () => {
+    const { CodexProvider } = await import('../codex-provider.js');
+    const { PendingPermissions } = await import('../permission-gateway.js');
+    const provider = new CodexProvider(new PendingPermissions());
+
+    const startOptions: Array<Record<string, unknown>> = [];
+    const rejectedThread = {
+      runStreamed: async () => {
+        throw new Error('Not inside a trusted directory and --skip-git-repo-check was not specified.');
+      },
+    };
+    const successfulThread = {
+      runStreamed: () => ({
+        events: (async function* () {
+          yield { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1, cached_input_tokens: 0 } };
+        })(),
+      }),
+    };
+
+    (provider as any).sdk = { Codex: class { constructor() {} } };
+    (provider as any).codex = {
+      startThread: (opts: Record<string, unknown>) => {
+        startOptions.push(opts);
+        return startOptions.length === 1 ? rejectedThread : successfulThread;
+      },
+    };
+
+    const stream = provider.streamChat({
+      prompt: 'hello',
+      sessionId: 'retry-skip-git-check-session',
+      workingDirectory: '/home/tom/Desktop',
+    });
+    await collectStream(stream);
+
+    assert.equal(startOptions.length, 2);
+    assert.equal(startOptions[0].skipGitRepoCheck, undefined);
+    assert.equal(startOptions[1].skipGitRepoCheck, true);
+  });
+
+  it('retries app-server execution with skipGitRepoCheck when the working directory is untrusted', async () => {
+    const { CodexProvider } = await import('../codex-provider.js');
+    const { PendingPermissions } = await import('../permission-gateway.js');
+    const provider = new CodexProvider(new PendingPermissions());
+
+    const streamCalls: Array<Record<string, unknown>> = [];
+    let closeCalls = 0;
+    const fakeBridge = {
+      async streamChat(
+        _params: Record<string, unknown>,
+        _controller: ReadableStreamDefaultController<string>,
+        threadOptions: Record<string, unknown>,
+      ) {
+        streamCalls.push(threadOptions);
+        if (streamCalls.length === 1) {
+          throw new Error('Not inside a trusted directory and --skip-git-repo-check was not specified.');
+        }
+      },
+      close() {
+        closeCalls += 1;
+      },
+    };
+
+    (provider as any).appServer = fakeBridge;
+    (provider as any).getAppServerBridge = () => fakeBridge;
+
+    const stream = provider.streamChat({
+      prompt: 'hello',
+      sessionId: 'retry-app-server-skip-git-check-session',
+      workingDirectory: '/home/tom/Desktop',
+      approvalPolicy: 'on-request',
+    });
+    await collectStream(stream);
+
+    assert.equal(streamCalls.length, 2);
+    assert.equal(streamCalls[0].skipGitRepoCheck, undefined);
+    assert.equal(streamCalls[1].skipGitRepoCheck, true);
+    assert.equal(closeCalls, 1);
+  });
+
   it('retries with fresh thread when resume fails before any events', async () => {
     const { CodexProvider } = await import('../codex-provider.js');
     const { PendingPermissions } = await import('../permission-gateway.js');

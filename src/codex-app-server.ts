@@ -531,6 +531,12 @@ export class CodexAppServerBridge {
         return started.thread.id;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        if (!threadOptions.skipGitRepoCheck && shouldRetryWithSkipGitRepoCheck(message)) {
+          console.warn('[codex-app-server] Working directory is not trusted, retrying with skipGitRepoCheck:', message);
+          this.close();
+          const retryClient = await this.ensureClient(true);
+          return await this.resolveThread(retryClient, params, { ...threadOptions, skipGitRepoCheck: true });
+        }
         if (savedThreadId && !retryFresh && shouldRetryFreshThread(message)) {
           savedThreadId = undefined;
           retryFresh = true;
@@ -1088,6 +1094,15 @@ function buildThreadConfig(options: CodexThreadOptions): Record<string, unknown>
   }
 
   return Object.keys(config).length > 0 ? config : undefined;
+}
+
+function shouldRetryWithSkipGitRepoCheck(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('not inside a trusted directory') ||
+    (lower.includes('working directory') && lower.includes('git repository')) ||
+    (lower.includes('skip-git-repo-check') && lower.includes('git'))
+  );
 }
 
 function buildTurnSandboxPolicy(options: CodexThreadOptions): Record<string, unknown> | undefined {

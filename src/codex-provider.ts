@@ -70,6 +70,15 @@ function shouldRetryFreshThread(message: string): boolean {
   );
 }
 
+function shouldRetryWithSkipGitRepoCheck(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('not inside a trusted directory') ||
+    (lower.includes('working directory') && lower.includes('git repository')) ||
+    (lower.includes('skip-git-repo-check') && lower.includes('git'))
+  );
+}
+
 export class CodexProvider implements LLMProvider {
   private sdk: CodexModule | null = null;
   private codex: CodexInstance | null = null;
@@ -135,7 +144,7 @@ export class CodexProvider implements LLMProvider {
             let savedThreadId = inMemoryThreadId || params.sdkSessionId || undefined;
 
             const passModel = shouldPassModelToCodex();
-            const threadOptions = buildCodexThreadOptions({
+            let threadOptions = buildCodexThreadOptions({
               ...(passModel && params.model ? { model: params.model } : {}),
               ...(params.workingDirectory ? { workingDirectory: params.workingDirectory } : {}),
               ...(shouldSkipGitRepoCheck() ? { skipGitRepoCheck: true } : {}),
@@ -180,14 +189,28 @@ export class CodexProvider implements LLMProvider {
             }
 
             if (shouldUseCodexAppServer(threadOptions)) {
-              await self.getAppServerBridge().streamChat(
-                params,
-                controller,
-                threadOptions,
-                appServerInput,
-              );
-              controller.close();
-              return;
+              while (true) {
+                try {
+                  await self.getAppServerBridge().streamChat(
+                    params,
+                    controller,
+                    threadOptions,
+                    appServerInput,
+                  );
+                  controller.close();
+                  return;
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : String(error);
+                  if (!threadOptions.skipGitRepoCheck && shouldRetryWithSkipGitRepoCheck(message)) {
+                    console.warn('[codex-provider] Working directory is not trusted, retrying with skipGitRepoCheck:', message);
+                    threadOptions = { ...threadOptions, skipGitRepoCheck: true };
+                    self.appServer?.close();
+                    self.appServer = null;
+                    continue;
+                  }
+                  throw error;
+                }
+              }
             }
 
             let retryFresh = false;
@@ -264,6 +287,11 @@ export class CodexProvider implements LLMProvider {
                 break;
               } catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
+                if (!sawAnyEvent && !threadOptions.skipGitRepoCheck && shouldRetryWithSkipGitRepoCheck(message)) {
+                  console.warn('[codex-provider] Working directory is not trusted, retrying with skipGitRepoCheck:', message);
+                  threadOptions = { ...threadOptions, skipGitRepoCheck: true };
+                  continue;
+                }
                 if (savedThreadId && !retryFresh && !sawAnyEvent && shouldRetryFreshThread(message)) {
                   console.warn('[codex-provider] Resume failed, retrying with a fresh thread:', message);
                   savedThreadId = undefined;
