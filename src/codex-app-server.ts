@@ -957,11 +957,18 @@ export class CodexAppServerBridge {
       return await this.pendingPerms.waitFor(String(requestId));
     } finally {
       state.pendingApprovalCount = Math.max(0, state.pendingApprovalCount - 1);
+      if (state.pendingApprovalCount === 0 && !state.settled) {
+        this.flushBufferedAgentText(state);
+      }
     }
   }
 
   private flushBufferedAgentText(state: ActiveTurnState): void {
-    if (state.approvalRequested || state.syntheticFallbackTriggered) {
+    if (state.pendingApprovalCount > 0) {
+      return;
+    }
+
+    if (state.syntheticFallbackTriggered) {
       state.bufferedAgentMessageDeltas.clear();
       return;
     }
@@ -1157,7 +1164,7 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 function shouldBufferAgentText(state: ActiveTurnState): boolean {
-  return state.syntheticFallbackTriggered || (!state.approvalRequested && state.pendingApprovalCount === 0);
+  return state.syntheticFallbackTriggered || state.pendingApprovalCount > 0;
 }
 
 const syntheticEscalationSessionApprovals = new Set<string>();

@@ -54,6 +54,14 @@ export abstract class BaseChannelAdapter {
   }
 
   /**
+   * Remove inline buttons from a previously sent message.
+   * Useful for one-shot permission prompts to prevent repeated clicks.
+   */
+  async clearInlineButtons(_chatId: string, _messageId: string): Promise<void> {
+    // No-op by default; override in adapters that support message edits
+  }
+
+  /**
    * Validate that the adapter's configuration is complete.
    * Returns null if valid, or an error message string if invalid.
    */

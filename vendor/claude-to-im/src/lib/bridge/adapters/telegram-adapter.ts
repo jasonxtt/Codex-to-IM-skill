@@ -216,6 +216,88 @@ export class TelegramAdapter extends BaseChannelAdapter {
     });
   }
 
+  async clearInlineButtons(chatId: string, messageId: string): Promise<void> {
+    const token = this.botToken;
+    if (!token) return;
+
+    const parsedMessageId = Number.parseInt(messageId, 10);
+    if (!Number.isFinite(parsedMessageId)) {
+      console.warn('[telegram-adapter] clearInlineButtons skipped: invalid message id', {
+        chatId,
+        messageId,
+      });
+      return;
+    }
+
+    console.log('[telegram-adapter] clearInlineButtons requested', {
+      chatId,
+      messageId: parsedMessageId,
+    });
+
+    // Prefer deleting the permission prompt message so users cannot re-click it.
+    const deleteResult = await callTelegramApi(token, 'deleteMessage', {
+      chat_id: chatId,
+      message_id: parsedMessageId,
+    });
+    if (deleteResult.ok) {
+      console.log('[telegram-adapter] Permission prompt deleted', {
+        chatId,
+        messageId: parsedMessageId,
+      });
+      return;
+    }
+
+    const deleteError = (deleteResult.error || '').toLowerCase();
+    if (deleteError.includes('message to delete not found')) {
+      console.log('[telegram-adapter] Permission prompt already gone', {
+        chatId,
+        messageId: parsedMessageId,
+        deleteError: deleteResult.error,
+      });
+      return;
+    }
+
+    console.warn('[telegram-adapter] deleteMessage failed, falling back to editMessageReplyMarkup', {
+      chatId,
+      messageId: parsedMessageId,
+      deleteError: deleteResult.error,
+    });
+
+    // Fallback: if delete is unavailable in this chat context, clear inline keyboard.
+    const result = await callTelegramApi(token, 'editMessageReplyMarkup', {
+      chat_id: chatId,
+      message_id: parsedMessageId,
+      reply_markup: { inline_keyboard: [] },
+    });
+
+    if (!result.ok && result.error) {
+      const msg = result.error.toLowerCase();
+      if (
+        msg.includes('message is not modified')
+        || msg.includes('message to edit not found')
+      ) {
+        console.log('[telegram-adapter] Permission prompt markup already cleared', {
+          chatId,
+          messageId: parsedMessageId,
+          editError: result.error,
+        });
+        return;
+      }
+      console.warn('[telegram-adapter] Failed to dismiss permission prompt:', {
+        chatId,
+        messageId: parsedMessageId,
+        deleteError: deleteResult.error,
+        editError: result.error,
+      });
+      return;
+    }
+
+    console.log('[telegram-adapter] Permission prompt markup cleared', {
+      chatId,
+      messageId: parsedMessageId,
+    });
+  }
+
   validateConfig(): string | null {
     const token = getBridgeContext().store.getSetting('telegram_bot_token');
     if (!token) return 'telegram_bot_token not configured';
@@ -519,6 +601,15 @@ export class TelegramAdapter extends BaseChannelAdapter {
               continue;
             }
 
+            console.log('[telegram-adapter] Received callback query', {
+              updateId: update.update_id,
+              callbackQueryId: cb.id,
+              callbackData: cb.data,
+              chatId,
+              userId,
+              messageId: cb.message?.message_id,
+            });
+
             const msg: InboundMessage = {
               messageId: cb.id,
               address: {
@@ -538,7 +629,12 @@ export class TelegramAdapter extends BaseChannelAdapter {
             this.enqueue(msg);
 
             // Answer callback to dismiss the loading state
-            this.answerCallback(cb.id).catch(() => {});
+            this.answerCallback(cb.id).catch((err) => {
+              console.warn('[telegram-adapter] Failed to answer callback query', {
+                callbackQueryId: cb.id,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            });
           } else if (update.message) {
             const m = update.message;
             const chatId = String(m.chat.id);

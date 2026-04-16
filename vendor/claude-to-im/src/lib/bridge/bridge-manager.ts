@@ -506,6 +506,14 @@ function runAdapterLoop(adapter: BaseChannelAdapter): void {
   });
 }
 
+function extractPermissionRequestId(callbackData: string): string | null {
+  const parts = callbackData.split(':');
+  if (parts.length < 3 || parts[0] !== 'perm') {
+    return null;
+  }
+  return parts.slice(2).join(':');
+}
+
 /**
  * Handle a single inbound message.
  */
@@ -532,9 +540,44 @@ async function handleMessage(
 
   // Handle callback queries (permission/session/settings buttons)
   if (msg.callbackData) {
-    const handled = msg.callbackData.startsWith('perm:')
-      ? broker.handlePermissionCallback(msg.callbackData, msg.address.chatId, msg.callbackMessageId)
-      : await handleUiCallback(adapter, msg, msg.callbackData);
+    console.log('[bridge-manager] Handling callback', {
+      callbackData: msg.callbackData,
+      chatId: msg.address.chatId,
+      callbackMessageId: msg.callbackMessageId,
+      inboundMessageId: msg.messageId,
+    });
+    if (msg.callbackData.startsWith('perm:')) {
+      const permissionRequestId = extractPermissionRequestId(msg.callbackData);
+      const handled = broker.handlePermissionCallback(msg.callbackData, msg.address.chatId, msg.callbackMessageId);
+
+      const link = permissionRequestId ? store.getPermissionLink(permissionRequestId) : null;
+      const shouldClearPermissionButtons = !!link
+        && link.chatId === msg.address.chatId
+        && (!msg.callbackMessageId || msg.callbackMessageId === link.messageId)
+        && (handled || link.resolved);
+
+      console.log('[bridge-manager] Permission callback result', {
+        callbackData: msg.callbackData,
+        permissionRequestId,
+        handled,
+        shouldClearPermissionButtons,
+        link: link ? {
+          chatId: link.chatId,
+          messageId: link.messageId,
+          resolved: link.resolved,
+        } : null,
+      });
+
+      if (shouldClearPermissionButtons) {
+        try {
+          await adapter.clearInlineButtons(msg.address.chatId, link.messageId);
+        } catch (err) {
+          console.warn('[bridge-manager] Failed to clear permission inline buttons:', err);
+        }
+      }
+    } else {
+      await handleUiCallback(adapter, msg, msg.callbackData);
+    }
     ack();
     return;
   }
