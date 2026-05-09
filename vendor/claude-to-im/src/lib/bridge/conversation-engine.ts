@@ -218,6 +218,7 @@ function resolveRuntimeOptions(
   sandboxMode?: StreamSandboxMode;
   networkAccessEnabled?: boolean;
   additionalDirectories?: string[];
+  approvalsReviewer?: string;
 } {
   const configuredApprovalPolicy = parseApprovalPolicy(
     getFirstSetting(store, ['bridge_approval_policy', 'bridge_codex_approval_policy']),
@@ -239,6 +240,12 @@ function resolveRuntimeOptions(
       'bridge_codex_additional_directories',
     ]),
   );
+  const configuredApprovalsReviewer = parseApprovalsReviewer(
+    getFirstSetting(store, [
+      'bridge_approvals_reviewer',
+      'bridge_codex_approvals_reviewer',
+    ]),
+  );
   const profileOverrides = resolvePermissionProfileOverrides(permissionProfile);
 
   return {
@@ -246,23 +253,33 @@ function resolveRuntimeOptions(
     sandboxMode: profileOverrides.sandboxMode ?? configuredSandboxMode,
     networkAccessEnabled,
     additionalDirectories,
+    approvalsReviewer: profileOverrides.approvalsReviewer ?? configuredApprovalsReviewer,
   };
 }
 
 function resolvePermissionProfileOverrides(permissionProfile?: PermissionProfile): {
   approvalPolicy?: StreamApprovalPolicy;
   sandboxMode?: StreamSandboxMode;
+  approvalsReviewer?: string;
 } {
   switch (permissionProfile) {
     case 'full':
       return {
         approvalPolicy: 'never',
         sandboxMode: 'danger-full-access',
+        approvalsReviewer: 'user',
       };
     case 'ask':
       return {
         approvalPolicy: 'on-request',
         sandboxMode: 'workspace-write',
+        approvalsReviewer: 'user',
+      };
+    case 'auto-review':
+      return {
+        approvalPolicy: 'on-request',
+        sandboxMode: 'workspace-write',
+        approvalsReviewer: 'guardian_subagent',
       };
     default:
       return {};
@@ -328,6 +345,12 @@ function parseStringArraySetting(value: string | null): string[] | undefined {
     .map((item) => item.trim())
     .filter(Boolean);
   return items.length > 0 ? items : undefined;
+}
+
+function parseApprovalsReviewer(value: string | null): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
 }
 
 /**

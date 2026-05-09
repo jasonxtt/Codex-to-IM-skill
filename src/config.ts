@@ -34,6 +34,12 @@ export interface Config {
   weixinMediaEnabled?: boolean;
   // Auto-approve all tool permission requests without user confirmation
   autoApprove?: boolean;
+  // Codex-specific settings
+  codexApprovalPolicy?: 'untrusted' | 'on-request' | 'on-failure' | 'never';
+  codexSandboxMode?: 'read-only' | 'workspace-write' | 'danger-full-access';
+  codexNetworkAccess?: boolean;
+  codexAdditionalDirectories?: string[];
+  codexApprovalsReviewer?: string;
 }
 
 export const CTI_HOME = process.env.CTI_HOME || path.join(os.homedir(), ".codex-to-im");
@@ -114,6 +120,13 @@ export function loadConfig(): Config {
       ? env.get("CTI_WEIXIN_MEDIA_ENABLED") === "true"
       : undefined,
     autoApprove: env.get("CTI_AUTO_APPROVE") === "true",
+    codexApprovalPolicy: env.get("CTI_CODEX_APPROVAL_POLICY") as Config['codexApprovalPolicy'] || undefined,
+    codexSandboxMode: env.get("CTI_CODEX_SANDBOX_MODE") as Config['codexSandboxMode'] || undefined,
+    codexNetworkAccess: env.has("CTI_CODEX_NETWORK_ACCESS")
+      ? env.get("CTI_CODEX_NETWORK_ACCESS") === "true"
+      : undefined,
+    codexAdditionalDirectories: splitCsv(env.get("CTI_CODEX_ADDITIONAL_DIRECTORIES")),
+    codexApprovalsReviewer: env.get("CTI_CODEX_APPROVALS_REVIEWER") || undefined,
   };
 }
 
@@ -172,6 +185,18 @@ export function saveConfig(config: Config): void {
   out += formatEnvLine("CTI_WEIXIN_CDN_BASE_URL", config.weixinCdnBaseUrl);
   if (config.weixinMediaEnabled !== undefined)
     out += formatEnvLine("CTI_WEIXIN_MEDIA_ENABLED", String(config.weixinMediaEnabled));
+
+  // Codex-specific settings
+  if (config.codexApprovalPolicy)
+    out += formatEnvLine("CTI_CODEX_APPROVAL_POLICY", config.codexApprovalPolicy);
+  if (config.codexSandboxMode)
+    out += formatEnvLine("CTI_CODEX_SANDBOX_MODE", config.codexSandboxMode);
+  if (config.codexNetworkAccess !== undefined)
+    out += formatEnvLine("CTI_CODEX_NETWORK_ACCESS", String(config.codexNetworkAccess));
+  if (config.codexAdditionalDirectories)
+    out += formatEnvLine("CTI_CODEX_ADDITIONAL_DIRECTORIES", config.codexAdditionalDirectories.join(","));
+  if (config.codexApprovalsReviewer)
+    out += formatEnvLine("CTI_CODEX_APPROVALS_REVIEWER", config.codexApprovalsReviewer);
 
   fs.mkdirSync(CTI_HOME, { recursive: true });
   const tmpPath = CONFIG_PATH + ".tmp";
@@ -275,6 +300,23 @@ export function configToSettings(config: Config): Map<string, string> {
     m.set("default_model", config.defaultModel);
   }
   m.set("bridge_default_mode", config.defaultMode);
+
+  // ── Codex runtime defaults ──
+  // These settings are consumed by the bridge conversation engine and should
+  // remain lower priority than session-level /permission overrides.
+  if (config.codexApprovalPolicy)
+    m.set("bridge_codex_approval_policy", config.codexApprovalPolicy);
+  if (config.codexSandboxMode)
+    m.set("bridge_codex_sandbox_mode", config.codexSandboxMode);
+  if (config.codexNetworkAccess !== undefined) {
+    const value = String(config.codexNetworkAccess);
+    m.set("bridge_codex_network_access_enabled", value);
+    m.set("bridge_codex_network_access", value);
+  }
+  if (config.codexAdditionalDirectories?.length)
+    m.set("bridge_codex_additional_directories", config.codexAdditionalDirectories.join(","));
+  if (config.codexApprovalsReviewer)
+    m.set("bridge_codex_approvals_reviewer", config.codexApprovalsReviewer);
 
   return m;
 }

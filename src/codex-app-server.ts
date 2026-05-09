@@ -14,6 +14,7 @@ export interface CodexThreadOptions {
   approvalPolicy?: 'untrusted' | 'on-request' | 'on-failure' | 'never';
   networkAccessEnabled?: boolean;
   additionalDirectories?: string[];
+  approvalsReviewer?: string;
 }
 
 interface JsonRpcRequestMessage {
@@ -365,7 +366,7 @@ export class CodexAppServerBridge {
         input,
         ...(threadOptions.workingDirectory ? { cwd: threadOptions.workingDirectory } : {}),
         ...(threadOptions.approvalPolicy ? { approvalPolicy: threadOptions.approvalPolicy } : {}),
-        approvalsReviewer: 'user',
+        approvalsReviewer: threadOptions.approvalsReviewer ?? 'user',
         ...(buildTurnSandboxPolicy(threadOptions) ? { sandboxPolicy: buildTurnSandboxPolicy(threadOptions) } : {}),
         ...(threadOptions.model ? { model: threadOptions.model } : {}),
       });
@@ -508,7 +509,7 @@ export class CodexAppServerBridge {
             ...(threadOptions.model ? { model: threadOptions.model } : {}),
             ...(threadOptions.workingDirectory ? { cwd: threadOptions.workingDirectory } : {}),
             ...(threadOptions.approvalPolicy ? { approvalPolicy: threadOptions.approvalPolicy } : {}),
-            approvalsReviewer: 'user',
+            approvalsReviewer: threadOptions.approvalsReviewer ?? 'user',
             ...(threadOptions.sandboxMode ? { sandbox: threadOptions.sandboxMode } : {}),
             ...(buildThreadConfig(threadOptions) ? { config: buildThreadConfig(threadOptions) } : {}),
             persistExtendedHistory: true,
@@ -521,7 +522,7 @@ export class CodexAppServerBridge {
           ...(threadOptions.model ? { model: threadOptions.model } : {}),
           ...(threadOptions.workingDirectory ? { cwd: threadOptions.workingDirectory } : {}),
           ...(threadOptions.approvalPolicy ? { approvalPolicy: threadOptions.approvalPolicy } : {}),
-          approvalsReviewer: 'user',
+          approvalsReviewer: threadOptions.approvalsReviewer ?? 'user',
           ...(threadOptions.sandboxMode ? { sandbox: threadOptions.sandboxMode } : {}),
           ...(buildThreadConfig(threadOptions) ? { config: buildThreadConfig(threadOptions) } : {}),
           experimentalRawEvents: false,
@@ -813,6 +814,14 @@ export class CodexAppServerBridge {
       typeof params?.turnId === 'string' ? params.turnId : undefined,
     );
     const command = typeof params?.command === 'string' ? params.command : '';
+    const proposedExecpolicyAmendment = Array.isArray(params?.proposedExecpolicyAmendment)
+      ? params.proposedExecpolicyAmendment as string[]
+      : undefined;
+    const proposedNetworkPolicyAmendments = Array.isArray(params?.proposedNetworkPolicyAmendments)
+      ? params.proposedNetworkPolicyAmendments as Array<Record<string, unknown>>
+      : undefined;
+    const networkApprovalContext = asRecord(params?.networkApprovalContext);
+
     const resolution = await this.requestApproval(
       state,
       message.id,
@@ -821,14 +830,21 @@ export class CodexAppServerBridge {
         command,
         cwd: typeof params?.cwd === 'string' ? params.cwd : undefined,
         reason: typeof params?.reason === 'string' ? params.reason : undefined,
+        ...(proposedExecpolicyAmendment ? { proposedExecpolicyAmendment } : {}),
+        ...(proposedNetworkPolicyAmendments ? { proposedNetworkPolicyAmendments } : {}),
+        ...(networkApprovalContext ? { networkApprovalContext } : {}),
       },
     );
 
-    return {
-      decision: resolution.behavior === 'allow'
-        ? (resolution.grantScope === 'session' ? 'acceptForSession' : 'accept')
-        : 'decline',
-    };
+    if (resolution.behavior !== 'allow') {
+      return { decision: 'decline' };
+    }
+
+    if (resolution.grantScope === 'session') {
+      return { decision: 'acceptForSession' };
+    }
+
+    return { decision: 'accept' };
   }
 
   private async handleFileChangeApprovalRequest(message: JsonRpcRequestMessage): Promise<unknown> {
@@ -882,12 +898,20 @@ export class CodexAppServerBridge {
       {
         reason: typeof params?.reason === 'string' ? params.reason : undefined,
         permissions: requestedPermissions,
+        cwd: typeof params?.cwd === 'string' ? params.cwd : undefined,
       },
     );
 
+    if (resolution.behavior !== 'allow') {
+      return {
+        scope: resolution.grantScope === 'session' ? 'session' : 'turn',
+        permissions: {},
+      };
+    }
+
     return {
-      ...(resolution.grantScope === 'session' ? { scope: 'session' } : { scope: 'turn' }),
-      permissions: resolution.behavior === 'allow' ? requestedPermissions : {},
+      scope: resolution.grantScope === 'session' ? 'session' : 'turn',
+      permissions: requestedPermissions,
     };
   }
 

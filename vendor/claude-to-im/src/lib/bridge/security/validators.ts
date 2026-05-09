@@ -14,7 +14,7 @@ const MAX_PATH_LENGTH = 1024;
 const SESSION_ID_PATTERN = /^[0-9a-f-]{32,64}$/i;
 const MAX_MODEL_LENGTH = 128;
 const VALID_MODES = ['plan', 'code', 'ask'] as const;
-const VALID_PERMISSION_PROFILES = ['ask', 'full', 'status'] as const;
+const VALID_PERMISSION_PROFILES = ['ask', 'full', 'auto-review', 'status'] as const;
 const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:+/-]*$/;
 
 /**

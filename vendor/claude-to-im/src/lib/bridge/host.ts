@@ -233,6 +233,7 @@ export interface StreamChatParams {
   sandboxMode?: StreamSandboxMode;
   networkAccessEnabled?: boolean;
   additionalDirectories?: string[];
+  approvalsReviewer?: string;
   onRuntimeStatusChange?: (status: string) => void;
 }
 

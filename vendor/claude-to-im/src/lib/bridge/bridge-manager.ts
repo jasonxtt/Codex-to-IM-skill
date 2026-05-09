@@ -971,14 +971,14 @@ async function handleCommand(
         '',
         '<b>常用命令</b>',
         '/new [路径] - 新建会话',
-        '/import &lt;codex_session_id&gt; - 导入 Codex CLI 会话',
-        '/resume [会话ID|external] - 恢复会话（支持本地或 Codex CLI 会话 ID）',
         '/cwd [路径] - 目录面板或直接切换并新建会话',
         '/sessions [all|external [all]] - 查看会话（含 Codex CLI 会话）',
+        '/status - 查看当前状态',
+        '/permission [ask|full|auto-review|status] - 权限模式',
         '/mode [plan|code|ask] - 查看或切换模式',
         '/model [模型名称] - 查看或切换模型',
-        '/permission [ask|full|status] - 权限模式',
-        '/status - 查看当前状态',
+        '/import &lt;codex_session_id&gt; - 导入 Codex CLI 会话',
+        '/resume [会话ID|external] - 恢复会话（支持本地或 Codex CLI 会话 ID）',
         '/stop - 停止当前任务',
         '/help - 查看完整命令',
       ].join('\n');
@@ -1324,7 +1324,7 @@ async function handleCommand(
         break;
       }
       if (!validatePermissionProfile(requestedProfile)) {
-        response = '用法: /permission ask|full|status';
+        response = '用法: /permission ask|full|auto-review|status';
         break;
       }
       if (requestedProfile === 'status') {
@@ -1367,14 +1367,14 @@ async function handleCommand(
         '<b>命令帮助</b>',
         '',
         '/new [路径] - 新建会话',
-        '/import &lt;codex_session_id&gt; - 导入 Codex CLI 会话',
-        '/resume [会话ID|external] - 恢复会话（支持本地或 Codex CLI 会话 ID）',
         '/cwd [路径] - 打开目录选择，或直接切换并新建会话',
         '/sessions [all|external [all]] - 查看会话（含 Codex CLI 会话）',
+        '/status - 查看当前状态',
+        '/permission [ask|full|auto-review|status] - 查看或切换权限模式',
         '/mode [plan|code|ask] - 查看或切换模式',
         '/model [模型名称] - 查看或切换模型',
-        '/permission [ask|full|status] - 查看或切换权限模式',
-        '/status - 查看当前状态',
+        '/import &lt;codex_session_id&gt; - 导入 Codex CLI 会话',
+        '/resume [会话ID|external] - 恢复会话（支持本地或 Codex CLI 会话 ID）',
         '/stop - 停止当前任务',
         '/perm allow|allow_session|deny &lt;id&gt; - 处理权限请求',
         '/bind &lt;session_id&gt; - 高级：手动绑定会话',
@@ -1592,9 +1592,14 @@ async function handleUiCallback(
     return true;
   }
 
-  if (callbackData === 'ui:permission:ask' || callbackData === 'ui:permission:full') {
+  if (callbackData === 'ui:permission:ask' || callbackData === 'ui:permission:full' || callbackData === 'ui:permission:auto-review') {
     const binding = router.resolve(msg.address);
-    const nextProfile: PermissionProfile = callbackData.endsWith(':full') ? 'full' : 'ask';
+    let nextProfile: PermissionProfile = 'ask';
+    if (callbackData.endsWith(':full')) {
+      nextProfile = 'full';
+    } else if (callbackData.endsWith(':auto-review')) {
+      nextProfile = 'auto-review';
+    }
     router.updateBinding(binding.id, { permissionProfile: nextProfile });
     const panel = buildPermissionPanel(nextProfile);
     await deliver(adapter, {
@@ -1724,7 +1729,10 @@ export function computeSdkSessionUpdate(
 }
 
 function getPermissionProfile(permissionProfile?: PermissionProfile): PermissionProfile {
-  return permissionProfile === 'full' ? 'full' : 'ask';
+  if (permissionProfile === 'full' || permissionProfile === 'auto-review') {
+    return permissionProfile;
+  }
+  return 'ask';
 }
 
 function normalizeWorkingDirectory(workingDirectory?: string): string {
@@ -1741,6 +1749,7 @@ function buildPermissionPanel(profile: PermissionProfile): {
     `当前: <b>${profile}</b>`,
     'ask: 需要审批时会询问你',
     'full: 会话内直接执行（谨慎使用）',
+    'auto-review: 使用 Codex 守护子代理自动审批',
   ].join('\n');
   const inlineButtons: NonNullable<OutboundMessage['inlineButtons']> = [
     [
@@ -1751,6 +1760,12 @@ function buildPermissionPanel(profile: PermissionProfile): {
       {
         text: profile === 'full' ? '✅ full' : '切到 full',
         callbackData: 'ui:permission:full',
+      },
+    ],
+    [
+      {
+        text: profile === 'auto-review' ? '✅ auto-review' : '切到 auto-review',
+        callbackData: 'ui:permission:auto-review',
       },
     ],
     [
@@ -2100,15 +2115,19 @@ function buildSessionsView(
 
   const lines = [showAll ? '<b>全部目录会话</b>' : '<b>当前目录会话</b>', ''];
   const buttons: NonNullable<OutboundMessage['inlineButtons']> = [];
+  const restoreButtons: Array<{ text: string; callbackData: string }> = [];
 
-  for (const session of sessions) {
+  for (let i = 0; i < sessions.length; i += 1) {
+    const session = sessions[i];
+    const sequence = i + 1;
     const current = session.id === currentBinding.codepilotSessionId ? ' [当前]' : '';
-    lines.push(`<code>${session.id.slice(0, 8)}...</code>${current} ${escapeHtml(session.working_directory || '~')}`);
+    lines.push(`${sequence}. <code>${session.id.slice(0, 8)}...</code>${current} ${escapeHtml(session.working_directory || '~')}`);
     lines.push(`<i>${escapeHtml(summarizeSessionPreview(store, session.id))}</i>`);
     if (!current) {
-      buttons.push([{ text: `恢复 ${session.id.slice(0, 8)}...`, callbackData: `ui:resume:${session.id}` }]);
+      restoreButtons.push({ text: `${sequence}. 恢复 ${session.id.slice(0, 8)}...`, callbackData: `ui:resume:${session.id}` });
     }
   }
+  pushInlineButtonsInColumns(buttons, restoreButtons, 2);
 
   buttons.push([
     showAll
@@ -2395,16 +2414,16 @@ function buildExternalSessionsView(
     '',
   ];
   const buttons: NonNullable<OutboundMessage['inlineButtons']> = [];
+  const restoreButtons: Array<{ text: string; callbackData: string }> = [];
   for (let i = 0; i < externalSessions.length; i += 1) {
     const session = externalSessions[i];
     lines.push(`${i + 1}. <code>${session.id.slice(0, 8)}...</code> ${escapeHtml(session.threadName || '未命名')} (${formatRelativeTimeLabel(session.updatedAt)})`);
     if (showAll) {
       lines.push(`   <code>${escapeHtml(session.cwd || '~')}</code>`);
     }
-    if (i < 8) {
-      buttons.push([{ text: `恢复 ${session.id.slice(0, 8)}...`, callbackData: `ui:resume_external:${session.id}` }]);
-    }
+    restoreButtons.push({ text: `${i + 1}. 恢复 ${session.id.slice(0, 8)}...`, callbackData: `ui:resume_external:${session.id}` });
   }
+  pushInlineButtonsInColumns(buttons, restoreButtons, 2);
   lines.push('');
   lines.push('可直接点击恢复，或发送 /resume &lt;codex_session_id&gt;。');
   lines.push('发送 /resume external 可恢复当前目录最新一条。');
@@ -2420,6 +2439,17 @@ function findLatestExternalCodexSessionByCwd(currentWorkingDirectory: string): E
   return loadExternalCodexSessions().find((session) => (
     normalizeWorkingDirectory(session.cwd) === currentDir
   )) || null;
+}
+
+function pushInlineButtonsInColumns(
+  target: NonNullable<OutboundMessage['inlineButtons']>,
+  buttons: Array<{ text: string; callbackData: string }>,
+  columns: number,
+): void {
+  const perRow = Math.max(1, columns);
+  for (let i = 0; i < buttons.length; i += perRow) {
+    target.push(buttons.slice(i, i + perRow));
+  }
 }
 
 function findExternalCodexSessionById(codexSessionId: string): ExternalCodexSessionSummary | null {

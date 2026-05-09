@@ -257,7 +257,7 @@ These commands are used inside Telegram after the bridge is running:
 | `/cwd [path]` | Open directory chooser or switch directory directly |
 | `/mode [plan|code|ask]` | Show or switch mode |
 | `/model [name|default]` | Show or switch model |
-| `/permission [ask|full|status]` | Show or switch permission profile |
+| `/permission [ask|full|auto-review|status]` | Show or switch permission profile |
 | `/status` | Show current session status (session, cwd, mode, permission, model) |
 | `/stop` | Stop the current running task |
 
@@ -270,6 +270,7 @@ When `CTI_RUNTIME=codex`, the following environment variables control sandbox pe
 | `CTI_CODEX_SANDBOX_MODE` | `read-only`, `workspace-write`, `danger-full-access` | SDK default | ⚠️ High |
 | `CTI_CODEX_APPROVAL_POLICY` | `untrusted`, `on-request`, `on-failure`, `never` | Derived from `permissionMode` | ⚠️ High |
 | `CTI_CODEX_NETWORK_ACCESS` | `true`, `false` | `false` | Medium |
+| `CTI_CODEX_APPROVALS_REVIEWER` | `user`, `guardian_subagent`, ... | `user` | Medium |
 | `CTI_CODEX_ADDITIONAL_DIRECTORIES` | Comma-separated absolute paths | (none) | Medium |
 
 #### Safe Default Configuration

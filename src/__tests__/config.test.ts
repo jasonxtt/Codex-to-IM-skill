@@ -170,6 +170,23 @@ describe('configToSettings', () => {
     assert.equal(m.get('bridge_default_mode'), 'plan');
   });
 
+  it('maps codex runtime defaults for the conversation engine', () => {
+    const m = configToSettings({
+      ...base,
+      codexApprovalPolicy: 'on-request',
+      codexSandboxMode: 'workspace-write',
+      codexNetworkAccess: true,
+      codexAdditionalDirectories: ['/tmp/one', '/tmp/two'],
+      codexApprovalsReviewer: 'guardian_subagent',
+    });
+    assert.equal(m.get('bridge_codex_approval_policy'), 'on-request');
+    assert.equal(m.get('bridge_codex_sandbox_mode'), 'workspace-write');
+    assert.equal(m.get('bridge_codex_network_access_enabled'), 'true');
+    assert.equal(m.get('bridge_codex_network_access'), 'true');
+    assert.equal(m.get('bridge_codex_additional_directories'), '/tmp/one,/tmp/two');
+    assert.equal(m.get('bridge_codex_approvals_reviewer'), 'guardian_subagent');
+  });
+
   it('omits optional fields when not set', () => {
     const m = configToSettings(base);
     assert.equal(m.has('telegram_bot_token'), false);

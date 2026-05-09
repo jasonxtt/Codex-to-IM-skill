@@ -153,6 +153,7 @@ export class CodexProvider implements LLMProvider {
               ...(params.approvalPolicy ? { approvalPolicy: params.approvalPolicy } : {}),
               ...(params.networkAccessEnabled !== undefined ? { networkAccessEnabled: params.networkAccessEnabled } : {}),
               ...(params.additionalDirectories ? { additionalDirectories: params.additionalDirectories } : {}),
+              ...(params.approvalsReviewer ? { approvalsReviewer: params.approvalsReviewer } : {}),
             });
 
             // Build input: Codex SDK UserInput supports { type: "text" } and
@@ -469,6 +470,7 @@ export function buildCodexThreadOptions(params: {
   approvalPolicy?: 'untrusted' | 'on-request' | 'on-failure' | 'never';
   networkAccessEnabled?: boolean;
   additionalDirectories?: string[];
+  approvalsReviewer?: string;
 }): CodexThreadOptions {
   const opts: CodexThreadOptions = {};
 
@@ -514,6 +516,14 @@ export function buildCodexThreadOptions(params: {
   } else {
     const additionalDirs = getCodexAdditionalDirectories();
     if (additionalDirs && additionalDirs.length > 0) opts.additionalDirectories = additionalDirs;
+  }
+
+  // Approvals reviewer
+  if (params.approvalsReviewer) {
+    opts.approvalsReviewer = params.approvalsReviewer;
+  } else {
+    const approvalsReviewer = process.env.CTI_CODEX_APPROVALS_REVIEWER;
+    if (approvalsReviewer) opts.approvalsReviewer = approvalsReviewer;
   }
 
   return opts;

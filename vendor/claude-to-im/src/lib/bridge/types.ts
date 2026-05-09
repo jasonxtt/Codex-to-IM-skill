@@ -19,7 +19,7 @@ export type { FileAttachment } from './host.js';
 export type ChannelType = string;
 
 /** Execution approval profile for a chat binding. */
-export type PermissionProfile = 'ask' | 'full';
+export type PermissionProfile = 'ask' | 'full' | 'auto-review';
 
 /** Unique address of a user within a channel */
 export interface ChannelAddress {

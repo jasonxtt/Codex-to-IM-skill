@@ -269,6 +269,7 @@ start bridge
 | `/permission` | 打开权限面板 |
 | `/permission ask` | 当前会话切到 ask |
 | `/permission full` | 当前会话切到 full |
+| `/permission auto-review` | 当前会话切到 auto-review |
 | `/permission status` | 查看当前会话权限状态 |
 | `/stop` | 停止当前任务 |
 | `/status` | 查看当前会话、目录、权限等状态 |
@@ -283,20 +284,22 @@ start bridge
 | `CTI_CODEX_APPROVAL_POLICY` | `untrusted`, `on-request`, `on-failure`, `never` | 由 permissionMode 推导 | ⚠️ 高危 |
 | `CTI_CODEX_NETWORK_ACCESS` | `true`, `false` | `false` | 中等 |
 | `CTI_CODEX_ADDITIONAL_DIRECTORIES` | 逗号分隔的绝对路径 | (无) | 中等 |
+| `CTI_CODEX_APPROVALS_REVIEWER` | `user`, `guardian_subagent`, ... | `user` | 中等 |
 
 这些变量是 daemon 级默认值，但不是唯一权限来源。
 
 当前实现里还有一层 Telegram 会话级权限配置：
 
-- `/permission ask` 等价于当前会话强制使用 `approvalPolicy=on-request` + `sandboxMode=workspace-write`
+- `/permission ask` 等价于当前会话强制使用 `approvalPolicy=on-request` + `sandboxMode=workspace-write` + `approvalsReviewer=user`
 - `/permission full` 等价于当前会话强制使用 `approvalPolicy=never` + `sandboxMode=danger-full-access`
+- `/permission auto-review` 等价于当前会话强制使用 `approvalPolicy=on-request` + `sandboxMode=workspace-write` + `approvalsReviewer=guardian_subagent`
 - 也就是说，会话内 `/permission` 的优先级高于全局 `CTI_CODEX_*` 默认值
 - 如果当前会话没有显式 `/permission` 覆盖，才会回落到 `CTI_CODEX_*` 或更底层的 mode 推导逻辑
 
 实际优先级可以理解为：
 
 1. 当前会话的 `/permission` 配置
-2. `CTI_CODEX_APPROVAL_POLICY` / `CTI_CODEX_SANDBOX_MODE` 等全局配置
+2. `CTI_CODEX_APPROVAL_POLICY` / `CTI_CODEX_SANDBOX_MODE` / `CTI_CODEX_APPROVALS_REVIEWER` 等全局配置
 3. 由运行模式推导出的默认审批策略
 
 另外要注意：

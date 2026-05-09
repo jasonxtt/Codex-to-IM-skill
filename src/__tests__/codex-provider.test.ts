@@ -33,6 +33,7 @@ const CODEX_OPTION_ENV_KEYS = [
   'CTI_CODEX_APPROVAL_POLICY',
   'CTI_CODEX_NETWORK_ACCESS',
   'CTI_CODEX_ADDITIONAL_DIRECTORIES',
+  'CTI_CODEX_APPROVALS_REVIEWER',
 ] as const;
 
 function clearCodexOptionEnv(): void {
@@ -243,6 +244,13 @@ describe('buildCodexThreadOptions', () => {
     process.env.CTI_CODEX_ADDITIONAL_DIRECTORIES = '/a,/b';
     const result = buildCodexThreadOptions({});
     assert.deepEqual(result.additionalDirectories, ['/a', '/b']);
+  });
+
+  it('should apply approvalsReviewer from params before env', async () => {
+    const buildCodexThreadOptions = await getCodexProviderExport('buildCodexThreadOptions') as (params: Record<string, unknown>) => Record<string, unknown>;
+    process.env.CTI_CODEX_APPROVALS_REVIEWER = 'user';
+    const result = buildCodexThreadOptions({ approvalsReviewer: 'guardian_subagent' });
+    assert.equal(result.approvalsReviewer, 'guardian_subagent');
   });
 
   it('should NOT include sandboxMode when not set (avoid overriding SDK default)', async () => {

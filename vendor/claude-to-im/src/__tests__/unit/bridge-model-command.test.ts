@@ -426,6 +426,33 @@ describe('/model and /import command', () => {
     assert.ok(sentMessages.some((message) => message.text.includes('已恢复外部 Codex CLI 会话。')));
   });
 
+  it('numbers local /sessions restore buttons to match the displayed list', async () => {
+    const { _testOnly } = await import('../../lib/bridge/bridge-manager');
+    const adapter = createAdapter(sentMessages);
+    store.seedBinding('chat-local-sessions', { model: 'gpt-5.3-codex', sdkSessionId: 'sdk-old' });
+    const firstResumable = store.createSession('Recent 1', 'gpt-5.3-codex', undefined, '/tmp/test');
+    const secondResumable = store.createSession('Recent 2', 'gpt-5.3-codex', undefined, '/tmp/test');
+    const thirdResumable = store.createSession('Recent 3', 'gpt-5.3-codex', undefined, '/tmp/test');
+
+    await _testOnly.handleMessage(adapter, {
+      messageId: 'msg-sessions-local',
+      address: { channelType: 'telegram', chatId: 'chat-local-sessions', userId: 'user-local-sessions' },
+      text: '/sessions',
+      timestamp: Date.now(),
+    });
+
+    const latest = sentMessages[sentMessages.length - 1];
+    assert.ok(latest.text.includes(`1. <code>${thirdResumable.id.slice(0, 8)}...</code>`));
+    assert.ok(latest.inlineButtons);
+    assert.deepEqual(latest.inlineButtons?.[0], [
+      { text: `1. 恢复 ${thirdResumable.id.slice(0, 8)}...`, callbackData: `ui:resume:${thirdResumable.id}` },
+      { text: `2. 恢复 ${secondResumable.id.slice(0, 8)}...`, callbackData: `ui:resume:${secondResumable.id}` },
+    ]);
+    assert.deepEqual(latest.inlineButtons?.[1], [
+      { text: `3. 恢复 ${firstResumable.id.slice(0, 8)}...`, callbackData: `ui:resume:${firstResumable.id}` },
+    ]);
+  });
+
   it('shows external Codex sessions for current cwd via /sessions external', async () => {
     const { _testOnly } = await import('../../lib/bridge/bridge-manager');
     const adapter = createAdapter(sentMessages);
@@ -461,30 +488,29 @@ describe('/model and /import command', () => {
 
     assert.ok(sentMessages.some((message) => message.text.includes('外部 Codex CLI 会话（当前目录）')));
     assert.ok(sentMessages.some((message) => message.text.includes(`${externalSessionId.slice(0, 8)}...`)));
+    assert.ok(sentMessages.some((message) => message.inlineButtons?.flat().some((button) => (
+      button.text === `1. 恢复 ${externalSessionId.slice(0, 8)}...`
+      && button.callbackData === `ui:resume_external:${externalSessionId}`
+    ))));
   });
 
   it('shows external Codex sessions across directories via /sessions external all', async () => {
     const { _testOnly } = await import('../../lib/bridge/bridge-manager');
     const adapter = createAdapter(sentMessages);
     store.seedBinding('chat-8', { model: 'gpt-5.3-codex', sdkSessionId: 'sdk-old' });
-    const externalSessionIdA = '019d7833-fadc-7ac1-94e1-dc91a8d37509';
-    const externalSessionIdB = '019d7833-fadc-7ac1-94e1-dc91a8d37510';
+    const externalSessionIds = Array.from({ length: 12 }, (_, index) => `019d7833-fadc-7ac1-94e1-dc91a8d375${String(index + 9).padStart(2, '0')}`);
 
     const oldHome = process.env.HOME;
     const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cti-ext-home-'));
     try {
       process.env.HOME = tempHome;
-      writeExternalCodexSession(tempHome, {
-        id: externalSessionIdA,
-        cwd: '/tmp/test',
-        threadName: 'External Session A',
-        updatedAt: '2026-04-15T15:00:00.000Z',
-      });
-      writeExternalCodexSession(tempHome, {
-        id: externalSessionIdB,
-        cwd: '/tmp/another',
-        threadName: 'External Session B',
-        updatedAt: '2026-04-15T16:00:00.000Z',
+      externalSessionIds.forEach((sessionId, index) => {
+        writeExternalCodexSession(tempHome, {
+          id: sessionId,
+          cwd: index % 2 === 0 ? '/tmp/test' : '/tmp/another',
+          threadName: `External Session ${index + 1}`,
+          updatedAt: `2026-04-15T${String(10 + index).padStart(2, '0')}:00:00.000Z`,
+        });
       });
       _testOnly.resetExternalCodexSessionCache();
 
@@ -507,8 +533,15 @@ describe('/model and /import command', () => {
     assert.ok(latest.text.includes('外部 Codex CLI 会话（全部目录）'));
     assert.ok(latest.text.includes('/tmp/another'));
     assert.ok(latest.text.includes('/tmp/test'));
-    assert.ok(latest.inlineButtons?.flat().some((button) => button.callbackData === `ui:resume_external:${externalSessionIdA}`));
-    assert.ok(latest.inlineButtons?.flat().some((button) => button.callbackData === `ui:resume_external:${externalSessionIdB}`));
+    assert.equal(latest.inlineButtons?.slice(0, 6).every((row) => row.length === 2), true);
+    const orderedSessionIds = [...externalSessionIds].reverse();
+    orderedSessionIds.forEach((sessionId, index) => {
+      assert.ok(latest.text.includes(`${index + 1}. <code>${sessionId.slice(0, 8)}...</code>`));
+      assert.ok(latest.inlineButtons?.flat().some((button) => (
+        button.text === `${index + 1}. 恢复 ${sessionId.slice(0, 8)}...`
+        && button.callbackData === `ui:resume_external:${sessionId}`
+      )));
+    });
   });
 
   it('resumes an external Codex session directly by /resume <codex_session_id>', async () => {
